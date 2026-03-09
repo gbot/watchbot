@@ -577,6 +577,8 @@
   }
 
   body.modal-open { overflow: hidden; }
+  body.auth-visible .topbar,
+  body.auth-visible .main { filter: blur(4px); pointer-events: none; user-select: none; }
 
   /* AUTH OVERLAY */
   .auth-overlay {
@@ -1048,7 +1050,7 @@ function showAuthOverlay(tab = 'login') {
   const overlay = document.getElementById('authOverlay');
   overlay.classList.add('show');
   overlay.setAttribute('aria-hidden', 'false');
-  document.body.classList.add('modal-open');
+  document.body.classList.add('modal-open', 'auth-visible');
   switchAuthTab(tab);
   setTimeout(() => {
     const el = document.getElementById(tab === 'login' ? 'loginUsername' : 'registerUsername');
@@ -1060,7 +1062,7 @@ function hideAuthOverlay() {
   const overlay = document.getElementById('authOverlay');
   overlay.classList.remove('show');
   overlay.setAttribute('aria-hidden', 'true');
-  document.body.classList.remove('modal-open');
+  document.body.classList.remove('modal-open', 'auth-visible');
 }
 
 function switchAuthTab(tab) {
