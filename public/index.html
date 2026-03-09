@@ -402,6 +402,76 @@
     gap: 8px;
   }
 
+  /* PROFILE OVERLAY */
+  .profile-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(32,33,36,0.52);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    z-index: 350;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+  }
+  .profile-overlay.show {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .profile-dialog {
+    width: min(440px, 100%);
+    background: var(--surface);
+    border-radius: 20px;
+    box-shadow: var(--elevation-3);
+    padding: 20px 24px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    max-height: 90vh;
+    overflow-y: auto;
+    transform: translateY(8px) scale(0.98);
+    transition: transform 0.2s ease;
+  }
+  .profile-overlay.show .profile-dialog {
+    transform: translateY(0) scale(1);
+  }
+  .profile-dialog-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .profile-avatar {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    background: var(--primary-light);
+    color: var(--primary);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .profile-avatar .material-icons { font-size: 24px; }
+  .profile-section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .profile-section-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--on-surface-medium);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+  }
+  .profile-divider { border-top: 1px solid var(--divider); }
+  .profile-msg {
+    font-size: 13px;
+    min-height: 16px;
+    margin: -4px 0;
+  }
+  .profile-msg.success { color: var(--success); }
+  .profile-msg.error   { color: var(--error); }
+
   body.modal-open { overflow: hidden; }
 
   /* AUTH OVERLAY */
@@ -593,6 +663,9 @@
   <span class="topbar-badge" id="activeCount">0 active</span>
   <div class="user-area" id="userArea" style="display:none">
     <span class="user-name" id="userDisplay"></span>
+    <button class="btn-icon" onclick="openProfile()" title="Account settings" style="color:var(--on-surface-medium)">
+      <span class="material-icons" style="font-size:20px">manage_accounts</span>
+    </button>
     <button class="btn btn-text" style="padding:6px 10px;font-size:13px" onclick="handleLogout()" title="Sign out">
       <span class="material-icons" style="font-size:16px">logout</span> Sign out
     </button>
@@ -634,6 +707,10 @@
           <option value="604800000">7 days</option>
         </select>
       </div>
+      <label class="ai-checkbox-row" title="When disabled, changes are still detected but no AI summary is generated">
+        <input type="checkbox" id="addAiSummary" />
+        AI summary
+      </label>
       <button class="btn btn-primary" onclick="addTracker()">
         <span class="material-icons" style="font-size:18px">add</span> Add
       </button>
@@ -703,6 +780,56 @@
       </div>
       <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:4px">Create account</button>
     </form>
+  </div>
+</div>
+
+<!-- PROFILE MODAL -->
+<div class="profile-overlay" id="profileOverlay" aria-hidden="true">
+  <div class="profile-dialog" role="dialog" aria-modal="true" aria-labelledby="profileTitle">
+    <div class="profile-dialog-header">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div class="profile-avatar"><span class="material-icons">person</span></div>
+        <div>
+          <h3 id="profileTitle" style="font-size:18px;font-weight:500;letter-spacing:-0.1px">Account settings</h3>
+          <div style="font-size:13px;color:var(--on-surface-medium)" id="profileUsernameDisplay"></div>
+        </div>
+      </div>
+      <button class="btn-icon" onclick="closeProfile()" aria-label="Close">
+        <span class="material-icons" style="font-size:20px">close</span>
+      </button>
+    </div>
+
+    <!-- Email -->
+    <div class="profile-section">
+      <div class="profile-section-title">Email address</div>
+      <div class="field">
+        <label for="profileEmail">Email</label>
+        <input type="email" id="profileEmail" placeholder="your@email.com" autocomplete="email" />
+      </div>
+      <p class="profile-msg" id="profileEmailMsg"></p>
+      <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="saveProfileEmail()">Save email</button>
+    </div>
+
+    <div class="profile-divider"></div>
+
+    <!-- Password -->
+    <div class="profile-section">
+      <div class="profile-section-title">Change password</div>
+      <div class="field">
+        <label for="profileCurrentPw">Current password</label>
+        <input type="password" id="profileCurrentPw" placeholder="Enter current password" autocomplete="current-password" />
+      </div>
+      <div class="field">
+        <label for="profileNewPw">New password</label>
+        <input type="password" id="profileNewPw" placeholder="At least 6 characters" autocomplete="new-password" />
+      </div>
+      <div class="field">
+        <label for="profileConfirmPw">Confirm new password</label>
+        <input type="password" id="profileConfirmPw" placeholder="Repeat new password" autocomplete="new-password" />
+      </div>
+      <p class="profile-msg" id="profilePwMsg"></p>
+      <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="saveProfilePassword()">Change password</button>
+    </div>
   </div>
 </div>
 
@@ -847,6 +974,111 @@ async function handleLogout() {
   showAuthOverlay('login');
 }
 
+// ─── PROFILE ──────────────────────────────────────────────────────────────────
+async function openProfile() {
+  document.getElementById('profileEmailMsg').textContent = '';
+  document.getElementById('profilePwMsg').textContent    = '';
+  document.getElementById('profileEmailMsg').className   = 'profile-msg';
+  document.getElementById('profilePwMsg').className      = 'profile-msg';
+  document.getElementById('profileCurrentPw').value      = '';
+  document.getElementById('profileNewPw').value          = '';
+  document.getElementById('profileConfirmPw').value      = '';
+  document.getElementById('profileUsernameDisplay').textContent = currentUser?.username || '';
+
+  try {
+    const res = await fetch('/api/auth/profile');
+    if (res.ok) {
+      const profile = await res.json();
+      document.getElementById('profileEmail').value = profile.email || '';
+    }
+  } catch {}
+
+  const overlay = document.getElementById('profileOverlay');
+  overlay.classList.add('show');
+  overlay.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('modal-open');
+  setTimeout(() => document.getElementById('profileEmail').focus(), 100);
+}
+
+function closeProfile() {
+  const overlay = document.getElementById('profileOverlay');
+  overlay.classList.remove('show');
+  overlay.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('modal-open');
+}
+
+async function saveProfileEmail() {
+  const email = document.getElementById('profileEmail').value.trim();
+  const msgEl = document.getElementById('profileEmailMsg');
+  msgEl.textContent = '';
+  msgEl.className   = 'profile-msg';
+  try {
+    const res  = await fetch('/api/auth/profile', {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ email }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      msgEl.textContent = data.error || 'Failed to save email';
+      msgEl.classList.add('error');
+    } else {
+      msgEl.textContent = 'Email saved.';
+      msgEl.classList.add('success');
+    }
+  } catch {
+    msgEl.textContent = 'Connection error.';
+    msgEl.classList.add('error');
+  }
+}
+
+async function saveProfilePassword() {
+  const currentPw = document.getElementById('profileCurrentPw').value;
+  const newPw     = document.getElementById('profileNewPw').value;
+  const confirmPw = document.getElementById('profileConfirmPw').value;
+  const msgEl     = document.getElementById('profilePwMsg');
+  msgEl.textContent = '';
+  msgEl.className   = 'profile-msg';
+
+  if (!currentPw || !newPw || !confirmPw) {
+    msgEl.textContent = 'All password fields are required.';
+    msgEl.classList.add('error');
+    return;
+  }
+  if (newPw !== confirmPw) {
+    msgEl.textContent = 'New passwords do not match.';
+    msgEl.classList.add('error');
+    return;
+  }
+  if (newPw.length < 6) {
+    msgEl.textContent = 'New password must be at least 6 characters.';
+    msgEl.classList.add('error');
+    return;
+  }
+
+  try {
+    const res  = await fetch('/api/auth/profile', {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ currentPassword: currentPw, newPassword: newPw }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      msgEl.textContent = data.error || 'Failed to change password';
+      msgEl.classList.add('error');
+    } else {
+      msgEl.textContent = 'Password changed successfully.';
+      msgEl.classList.add('success');
+      document.getElementById('profileCurrentPw').value = '';
+      document.getElementById('profileNewPw').value     = '';
+      document.getElementById('profileConfirmPw').value  = '';
+    }
+  } catch {
+    msgEl.textContent = 'Connection error.';
+    msgEl.classList.add('error');
+  }
+}
+
 // ─── SSE ──────────────────────────────────────────────────────────────────────
 function connectSSE() {
   if (evtSource) evtSource.close();
@@ -864,9 +1096,9 @@ function connectSSE() {
         trackers = trackers
           .filter(t => incoming.has(t.id))
           .map(t => ({ ...t, ...incoming.get(t.id) }));
-        // Append any newly added trackers
+        // Prepend any newly added trackers (server always unshifts new ones to front)
         const existingIds = new Set(trackers.map(t => t.id));
-        data.trackers.forEach(t => { if (!existingIds.has(t.id)) trackers.push(t); });
+        data.trackers.forEach(t => { if (!existingIds.has(t.id)) trackers.unshift(t); });
       }
       renderTrackers();
       updateBadge();
@@ -919,18 +1151,20 @@ async function saveEdit(id) {
 async function addTracker() {
   const url      = document.getElementById('urlInput').value.trim();
   const label    = document.getElementById('labelInput').value.trim();
-  const interval = parseInt(document.getElementById('intervalSelect').value);
+  const interval  = parseInt(document.getElementById('intervalSelect').value);
+  const aiSummary = document.getElementById('addAiSummary').checked;
   if (!url) { showSnackbar('Please enter a URL.', 'error'); return; }
   try { new URL(url); } catch { showSnackbar('Please enter a valid URL.', 'error'); return; }
   try {
     const res = await fetch('/api/trackers', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, label, interval })
+      body: JSON.stringify({ url, label, interval, aiSummary })
     });
     if (!res.ok) { const d = await res.json(); showSnackbar(d.error || 'Failed to add', 'error'); return; }
-    document.getElementById('urlInput').value  = '';
+    document.getElementById('urlInput').value   = '';
     document.getElementById('labelInput').value = '';
+    document.getElementById('addAiSummary').checked = false;
   } catch {
     showSnackbar('Connection error', 'error');
   }

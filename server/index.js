@@ -31,12 +31,16 @@ const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
+// Migrate existing DB if email column not yet present
+try { db.exec('ALTER TABLE users ADD COLUMN email TEXT'); } catch {}
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id           TEXT PRIMARY KEY,
     username     TEXT UNIQUE NOT NULL,
     passwordHash TEXT NOT NULL,
-    createdAt    TEXT NOT NULL
+    createdAt    TEXT NOT NULL,
+    email        TEXT
   );
 
   CREATE TABLE IF NOT EXISTS trackers (
@@ -55,7 +59,7 @@ db.exec(`
     changeSummary TEXT,
     changeSnippet TEXT,
     error         TEXT,
-    aiSummary     INTEGER DEFAULT 1,
+    aiSummary     INTEGER DEFAULT 0,
     createdAt     TEXT,
     position      INTEGER DEFAULT 0
   );
@@ -95,13 +99,14 @@ function loadUsers() {
 
 function saveUsers(users) {
   const upsert = db.prepare(`
-    INSERT INTO users (id, username, passwordHash, createdAt)
-    VALUES (@id, @username, @passwordHash, @createdAt)
+    INSERT INTO users (id, username, passwordHash, createdAt, email)
+    VALUES (@id, @username, @passwordHash, @createdAt, @email)
     ON CONFLICT(id) DO UPDATE SET
       username=excluded.username,
-      passwordHash=excluded.passwordHash
+      passwordHash=excluded.passwordHash,
+      email=excluded.email
   `);
-  db.transaction(() => users.forEach(u => upsert.run(u)))();
+  db.transaction(() => users.forEach(u => upsert.run({ email: null, ...u })))();
 }
 
 const _upsertTracker = db.prepare(`
@@ -464,6 +469,42 @@ app.get('/api/auth/me', (req, res) => {
   }
 });
 
+app.get('/api/auth/profile', authMiddleware, (req, res) => {
+  const user = db.prepare('SELECT id, username, email, createdAt FROM users WHERE id = ?').get(req.userId);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  res.json(user);
+});
+
+app.patch('/api/auth/profile', authMiddleware, async (req, res) => {
+  const { email, currentPassword, newPassword } = req.body;
+
+  if (email === undefined && newPassword === undefined)
+    return res.status(400).json({ error: 'Nothing to update' });
+
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.userId);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  if (email !== undefined) {
+    const trimmed = (email || '').trim();
+    if (trimmed && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed))
+      return res.status(400).json({ error: 'Invalid email address' });
+    db.prepare('UPDATE users SET email = ? WHERE id = ?').run(trimmed || null, req.userId);
+  }
+
+  if (newPassword !== undefined) {
+    if (!currentPassword)
+      return res.status(400).json({ error: 'Current password is required' });
+    const ok = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!ok) return res.status(401).json({ error: 'Current password is incorrect' });
+    if (newPassword.length < 6)
+      return res.status(400).json({ error: 'New password must be at least 6 characters' });
+    const hash = await bcrypt.hash(newPassword, 12);
+    db.prepare('UPDATE users SET passwordHash = ? WHERE id = ?').run(hash, req.userId);
+  }
+
+  res.json({ success: true });
+});
+
 // ─── API ROUTES ───────────────────────────────────────────────────────────────
 app.post('/api/summarize', async (req, res) => {
   const { oldText, newText, url } = req.body;
@@ -480,7 +521,7 @@ app.get('/api/trackers', authMiddleware, (req, res) => {
 });
 
 app.post('/api/trackers', authMiddleware, async (req, res) => {
-  const { url, label, interval } = req.body;
+  const { url, label, interval, aiSummary } = req.body;
   if (!url) return res.status(400).json({ error: 'url is required' });
   try { new URL(url); } catch { return res.status(400).json({ error: 'Invalid URL' }); }
 
@@ -497,6 +538,7 @@ app.post('/api/trackers', authMiddleware, async (req, res) => {
     changeCount:  0,
     changeSummary: null,
     error:        null,
+    aiSummary:    aiSummary === true,
     createdAt:    new Date().toISOString(),
     userId:       req.userId
   };
