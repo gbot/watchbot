@@ -59,7 +59,7 @@ db.exec(`
     changeSummary TEXT,
     changeSnippet TEXT,
     error         TEXT,
-    aiSummary     INTEGER DEFAULT 1,
+    aiSummary     INTEGER DEFAULT 0,
     createdAt     TEXT,
     position      INTEGER DEFAULT 0
   );
@@ -521,7 +521,7 @@ app.get('/api/trackers', authMiddleware, (req, res) => {
 });
 
 app.post('/api/trackers', authMiddleware, async (req, res) => {
-  const { url, label, interval } = req.body;
+  const { url, label, interval, aiSummary } = req.body;
   if (!url) return res.status(400).json({ error: 'url is required' });
   try { new URL(url); } catch { return res.status(400).json({ error: 'Invalid URL' }); }
 
@@ -538,6 +538,7 @@ app.post('/api/trackers', authMiddleware, async (req, res) => {
     changeCount:  0,
     changeSummary: null,
     error:        null,
+    aiSummary:    aiSummary === true,
     createdAt:    new Date().toISOString(),
     userId:       req.userId
   };

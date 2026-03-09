@@ -707,6 +707,10 @@
           <option value="604800000">7 days</option>
         </select>
       </div>
+      <label class="ai-checkbox-row" title="When disabled, changes are still detected but no AI summary is generated">
+        <input type="checkbox" id="addAiSummary" />
+        AI summary
+      </label>
       <button class="btn btn-primary" onclick="addTracker()">
         <span class="material-icons" style="font-size:18px">add</span> Add
       </button>
@@ -1147,18 +1151,20 @@ async function saveEdit(id) {
 async function addTracker() {
   const url      = document.getElementById('urlInput').value.trim();
   const label    = document.getElementById('labelInput').value.trim();
-  const interval = parseInt(document.getElementById('intervalSelect').value);
+  const interval  = parseInt(document.getElementById('intervalSelect').value);
+  const aiSummary = document.getElementById('addAiSummary').checked;
   if (!url) { showSnackbar('Please enter a URL.', 'error'); return; }
   try { new URL(url); } catch { showSnackbar('Please enter a valid URL.', 'error'); return; }
   try {
     const res = await fetch('/api/trackers', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, label, interval })
+      body: JSON.stringify({ url, label, interval, aiSummary })
     });
     if (!res.ok) { const d = await res.json(); showSnackbar(d.error || 'Failed to add', 'error'); return; }
-    document.getElementById('urlInput').value  = '';
+    document.getElementById('urlInput').value   = '';
     document.getElementById('labelInput').value = '';
+    document.getElementById('addAiSummary').checked = false;
   } catch {
     showSnackbar('Connection error', 'error');
   }
