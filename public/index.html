@@ -630,6 +630,8 @@
           <option value="21600000">6 hours</option>
           <option value="43200000">12 hours</option>
           <option value="86400000">24 hours</option>
+          <option value="259200000">3 days</option>
+          <option value="604800000">7 days</option>
         </select>
       </div>
       <button class="btn btn-primary" onclick="addTracker()">
@@ -1254,7 +1256,9 @@ function trackerHTML(t) {
             <option value="14400000"${t.interval===14400000?'selected':''}>4 hours</option>
             <option value="21600000"${t.interval===21600000?'selected':''}>6 hours</option>
             <option value="43200000"${t.interval===43200000?'selected':''}>12 hours</option>
-            <option value="86400000"${t.interval===86400000?'selected':''}>24 hours</option>
+            <option value="86400000" ${t.interval===86400000 ?'selected':''}>24 hours</option>
+            <option value="259200000"${t.interval===259200000?'selected':''}>3 days</option>
+            <option value="604800000"${t.interval===604800000?'selected':''}>7 days</option>
           </select>
         </div>
         <label class="ai-checkbox-row" title="When disabled, changes are still detected but no AI summary is generated">
@@ -1301,9 +1305,10 @@ function hideSnackbar() {
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 function intervalText(ms) {
-  if (ms < 60000)   return `${ms/1000}s`;
-  if (ms < 3600000) return `${ms/60000}m`;
-  return `${ms/3600000}h`;
+  if (ms < 60000)    return `${ms/1000}s`;
+  if (ms < 3600000)  return `${ms/60000}m`;
+  if (ms < 86400000) return `${ms/3600000}h`;
+  return `${ms/86400000}d`;
 }
 
 function timeAgo(isoString) {
