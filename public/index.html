@@ -472,6 +472,110 @@
   .profile-msg.success { color: var(--success); }
   .profile-msg.error   { color: var(--error); }
 
+  /* ADMIN PANEL */
+  .admin-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(32,33,36,0.52);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    z-index: 360;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+  }
+  .admin-overlay.show { opacity: 1; pointer-events: auto; }
+  .admin-dialog {
+    width: min(860px, 100%);
+    max-height: 88vh;
+    background: var(--surface);
+    border-radius: 20px;
+    box-shadow: var(--elevation-3);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transform: translateY(8px) scale(0.98);
+    transition: transform 0.2s ease;
+  }
+  .admin-overlay.show .admin-dialog { transform: translateY(0) scale(1); }
+  .admin-dialog-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid var(--divider);
+    flex-shrink: 0;
+  }
+  .admin-dialog-header h3 { font-size: 18px; font-weight: 500; }
+  .admin-badge {
+    font-size: 11px; font-weight: 700;
+    background: #fce8e6; color: var(--error);
+    border-radius: 20px; padding: 2px 8px;
+    letter-spacing: 0.4px; text-transform: uppercase;
+  }
+  .admin-tabs {
+    display: flex;
+    border-bottom: 2px solid var(--divider);
+    padding: 0 24px;
+    flex-shrink: 0;
+  }
+  .admin-tab {
+    background: none; border: none;
+    padding: 10px 16px 12px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px; font-weight: 500;
+    color: var(--on-surface-medium);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .admin-tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+  .admin-tab:hover:not(.active) { color: var(--on-surface); }
+  .admin-body { flex: 1; overflow-y: auto; padding: 20px 24px; }
+  .admin-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .admin-table th {
+    text-align: left;
+    font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    color: var(--on-surface-medium);
+    border-bottom: 2px solid var(--divider);
+    padding: 6px 10px 8px;
+  }
+  .admin-table td {
+    padding: 10px 10px;
+    border-bottom: 1px solid var(--divider);
+    vertical-align: middle;
+  }
+  .admin-table tr:last-child td { border-bottom: none; }
+  .admin-table tr:hover td { background: var(--background); }
+  .admin-role-badge {
+    font-size: 11px; font-weight: 600;
+    padding: 2px 8px; border-radius: 20px;
+    text-transform: uppercase; letter-spacing: 0.3px;
+  }
+  .admin-role-superadmin { background: #e8f0fe; color: var(--primary); }
+  .admin-role-user { background: var(--background); color: var(--on-surface-medium); }
+  .admin-url {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px; color: var(--on-surface-medium);
+    max-width: 260px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    display: block;
+  }
+  .admin-empty {
+    text-align: center;
+    padding: 40px;
+    color: var(--on-surface-light);
+    font-size: 14px;
+  }
+
   body.modal-open { overflow: hidden; }
 
   /* AUTH OVERLAY */
@@ -663,6 +767,9 @@
   <span class="topbar-badge" id="activeCount">0 active</span>
   <div class="user-area" id="userArea" style="display:none">
     <span class="user-name" id="userDisplay"></span>
+    <button class="btn-icon" id="adminPanelBtn" onclick="openAdminPanel()" title="Admin panel" style="display:none;color:var(--error)">
+      <span class="material-icons" style="font-size:20px">admin_panel_settings</span>
+    </button>
     <button class="btn-icon" onclick="openProfile()" title="Account settings" style="color:var(--on-surface-medium)">
       <span class="material-icons" style="font-size:20px">manage_accounts</span>
     </button>
@@ -780,6 +887,60 @@
       </div>
       <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:4px">Create account</button>
     </form>
+  </div>
+</div>
+
+<!-- ADMIN PANEL -->
+<div class="admin-overlay" id="adminOverlay" aria-hidden="true">
+  <div class="admin-dialog" role="dialog" aria-modal="true" aria-labelledby="adminTitle">
+    <div class="admin-dialog-header">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span class="material-icons" style="color:var(--error);font-size:22px">admin_panel_settings</span>
+        <h3 id="adminTitle">Admin Panel</h3>
+        <span class="admin-badge">Super Admin</span>
+      </div>
+      <button class="btn-icon" onclick="closeAdminPanel()" aria-label="Close">
+        <span class="material-icons" style="font-size:20px">close</span>
+      </button>
+    </div>
+    <div class="admin-tabs">
+      <button class="admin-tab active" data-tab="users"    onclick="switchAdminTab('users')">Users</button>
+      <button class="admin-tab"        data-tab="trackers" onclick="switchAdminTab('trackers')">All Trackers</button>
+    </div>
+    <div class="admin-body">
+      <!-- Users tab -->
+      <div id="adminUsersTab">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>Username</th>
+              <th>Email</th>
+              <th>Role</th>
+              <th>Trackers</th>
+              <th>Joined</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="adminUsersBody"></tbody>
+        </table>
+      </div>
+      <!-- Trackers tab -->
+      <div id="adminTrackersTab" style="display:none">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>Label</th>
+              <th>URL</th>
+              <th>Owner</th>
+              <th>Status</th>
+              <th>Changes</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="adminTrackersBody"></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -915,6 +1076,8 @@ function showApp() {
   hideAuthOverlay();
   document.getElementById('userDisplay').textContent = currentUser.username;
   document.getElementById('userArea').style.display  = 'flex';
+  const adminBtn = document.getElementById('adminPanelBtn');
+  adminBtn.style.display = currentUser.role === 'superadmin' ? 'flex' : 'none';
   connectSSE();
 }
 
@@ -972,6 +1135,89 @@ async function handleLogout() {
   updateBadge();
   document.getElementById('userArea').style.display = 'none';
   showAuthOverlay('login');
+}
+
+// ─── ADMIN PANEL ──────────────────────────────────────────────────────────────
+let adminCurrentTab = 'users';
+
+async function openAdminPanel() {
+  switchAdminTab('users');
+  const overlay = document.getElementById('adminOverlay');
+  overlay.classList.add('show');
+  overlay.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('modal-open');
+  await loadAdminTab('users');
+}
+
+function closeAdminPanel() {
+  const overlay = document.getElementById('adminOverlay');
+  overlay.classList.remove('show');
+  overlay.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('modal-open');
+}
+
+function switchAdminTab(tab) {
+  adminCurrentTab = tab;
+  document.querySelectorAll('.admin-tab').forEach(t =>
+    t.classList.toggle('active', t.dataset.tab === tab)
+  );
+  document.getElementById('adminUsersTab').style.display    = tab === 'users'    ? '' : 'none';
+  document.getElementById('adminTrackersTab').style.display = tab === 'trackers' ? '' : 'none';
+  loadAdminTab(tab);
+}
+
+async function loadAdminTab(tab) {
+  if (tab === 'users') {
+    const res  = await fetch('/api/admin/users');
+    if (!res.ok) return;
+    const users = await res.json();
+    const tbody = document.getElementById('adminUsersBody');
+    if (!users.length) { tbody.innerHTML = `<tr><td colspan="6" class="admin-empty">No users found.</td></tr>`; return; }
+    tbody.innerHTML = users.map(u => `
+      <tr>
+        <td><strong>${escHtml(u.username)}</strong></td>
+        <td>${u.email ? escHtml(u.email) : '<span style="color:var(--on-surface-light)">—</span>'}</td>
+        <td><span class="admin-role-badge admin-role-${u.role === 'superadmin' ? 'superadmin' : 'user'}">${u.role === 'superadmin' ? 'Super Admin' : 'User'}</span></td>
+        <td>${u.trackerCount}</td>
+        <td style="color:var(--on-surface-medium);font-size:12px">${new Date(u.createdAt).toLocaleDateString()}</td>
+        <td>${u.id === currentUser.id ? '' : `<button class="btn-icon" style="color:var(--error)" title="Delete user" onclick="adminDeleteUser('${u.id}','${escHtml(u.username)}')"><span class="material-icons" style="font-size:18px">person_remove</span></button>`}</td>
+      </tr>`).join('');
+  } else {
+    const res  = await fetch('/api/admin/trackers');
+    if (!res.ok) return;
+    const all  = await res.json();
+    // Fetch user list to resolve userId → username
+    const usersRes = await fetch('/api/admin/users');
+    const users    = usersRes.ok ? await usersRes.json() : [];
+    const userMap  = Object.fromEntries(users.map(u => [u.id, u.username]));
+    const tbody    = document.getElementById('adminTrackersBody');
+    if (!all.length) { tbody.innerHTML = `<tr><td colspan="6" class="admin-empty">No trackers found.</td></tr>`; return; }
+    tbody.innerHTML = all.map(t => `
+      <tr>
+        <td>${escHtml(t.label || t.url)}</td>
+        <td><span class="admin-url" title="${escHtml(t.url)}">${escHtml(t.url)}</span></td>
+        <td style="font-size:12px;color:var(--on-surface-medium)">${escHtml(userMap[t.userId] || t.userId)}</td>
+        <td><span class="chip chip-${t.status === 'changed' ? 'changed' : t.status === 'error' ? 'error' : t.active ? 'ok' : 'paused'}" style="font-size:11px">${t.active ? t.status : 'paused'}</span></td>
+        <td style="text-align:center">${t.changeCount || 0}</td>
+        <td><button class="btn-icon" style="color:var(--error)" title="Delete tracker" onclick="adminDeleteTracker('${t.id}','${escHtml(t.label || t.url)}')"><span class="material-icons" style="font-size:18px">delete_outline</span></button></td>
+      </tr>`).join('');
+  }
+}
+
+async function adminDeleteUser(id, username) {
+  const ok = await openDeleteConfirmDialog(`user "${username}" and all their trackers`);
+  if (!ok) return;
+  const res = await fetch(`/api/admin/users/${id}`, { method: 'DELETE' });
+  if (res.ok) { showSnackbar(`User ${username} deleted.`); loadAdminTab('users'); }
+  else { const d = await res.json(); showSnackbar(d.error || 'Delete failed', 'error'); }
+}
+
+async function adminDeleteTracker(id, label) {
+  const ok = await openDeleteConfirmDialog(`tracker "${label}"`);
+  if (!ok) return;
+  const res = await fetch(`/api/admin/trackers/${id}`, { method: 'DELETE' });
+  if (res.ok) { showSnackbar('Tracker deleted.'); loadAdminTab('trackers'); }
+  else { const d = await res.json(); showSnackbar(d.error || 'Delete failed', 'error'); }
 }
 
 // ─── PROFILE ──────────────────────────────────────────────────────────────────

@@ -33,6 +33,7 @@ db.pragma('foreign_keys = ON');
 
 // Migrate existing DB if email column not yet present
 try { db.exec('ALTER TABLE users ADD COLUMN email TEXT'); } catch {}
+try { db.exec('ALTER TABLE users ADD COLUMN role  TEXT NOT NULL DEFAULT \'user\''); } catch {}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
@@ -40,7 +41,8 @@ db.exec(`
     username     TEXT UNIQUE NOT NULL,
     passwordHash TEXT NOT NULL,
     createdAt    TEXT NOT NULL,
-    email        TEXT
+    email        TEXT,
+    role         TEXT NOT NULL DEFAULT 'user'
   );
 
   CREATE TABLE IF NOT EXISTS trackers (
@@ -175,6 +177,21 @@ function saveChange(change) {
 }
 
 let trackers = loadTrackers();
+
+// ─── SEED SUPER-ADMIN ────────────────────────────────────────────────────────
+(async () => {
+  const existing = db.prepare('SELECT id FROM users WHERE username = ?').get('wpnadmin');
+  if (!existing) {
+    const hash = await bcrypt.hash('vladimir', 12);
+    db.prepare(`INSERT INTO users (id, username, passwordHash, createdAt, role)
+                VALUES (?, 'wpnadmin', ?, ?, 'superadmin')`).
+      run(uuidv4(), hash, new Date().toISOString());
+    console.log('  ✓ Super-admin account created (wpnadmin)');
+  } else {
+    // Ensure the role is set correctly even if the account pre-existed
+    db.prepare('UPDATE users SET role = ? WHERE username = ?').run('superadmin', 'wpnadmin');
+  }
+})();
 
 // ─── VISIBLE TEXT EXTRACTION ──────────────────────────────────────────────────
 // Strips scripts, styles, comments and all HTML tags — leaving only the words
@@ -406,10 +423,18 @@ function authMiddleware(req, res, next) {
     const payload = jwt.verify(token, JWT_SECRET);
     req.userId   = payload.userId;
     req.username = payload.username;
+    req.role     = payload.role || 'user';
     next();
   } catch {
     return res.status(401).json({ error: 'Invalid or expired session' });
   }
+}
+
+function adminMiddleware(req, res, next) {
+  authMiddleware(req, res, () => {
+    if (req.role !== 'superadmin') return res.status(403).json({ error: 'Forbidden' });
+    next();
+  });
 }
 
 // ─── AUTH ROUTES ─────────────────────────────────────────────────────────────
@@ -431,9 +456,9 @@ app.post('/api/auth/register', async (req, res) => {
   users.push(user);
   saveUsers(users);
 
-  const token = jwt.sign({ userId: user.id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });
+  const token = jwt.sign({ userId: user.id, username: user.username, role: 'user' }, JWT_SECRET, { expiresIn: '7d' });
   res.cookie('watchdog_auth', token, { httpOnly: true, sameSite: 'lax', maxAge: COOKIE_MAX_AGE });
-  res.status(201).json({ id: user.id, username: user.username });
+  res.status(201).json({ id: user.id, username: user.username, role: 'user' });
 });
 
 app.post('/api/auth/login', async (req, res) => {
@@ -448,9 +473,9 @@ app.post('/api/auth/login', async (req, res) => {
   const ok = await bcrypt.compare(password, user.passwordHash);
   if (!ok) return res.status(401).json({ error: 'Invalid username or password' });
 
-  const token = jwt.sign({ userId: user.id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });
+  const token = jwt.sign({ userId: user.id, username: user.username, role: user.role || 'user' }, JWT_SECRET, { expiresIn: '7d' });
   res.cookie('watchdog_auth', token, { httpOnly: true, sameSite: 'lax', maxAge: COOKIE_MAX_AGE });
-  res.json({ id: user.id, username: user.username });
+  res.json({ id: user.id, username: user.username, role: user.role || 'user' });
 });
 
 app.post('/api/auth/logout', (req, res) => {
@@ -463,7 +488,7 @@ app.get('/api/auth/me', (req, res) => {
   if (!token) return res.status(401).json({ error: 'Not authenticated' });
   try {
     const payload = jwt.verify(token, JWT_SECRET);
-    res.json({ id: payload.userId, username: payload.username });
+    res.json({ id: payload.userId, username: payload.username, role: payload.role || 'user' });
   } catch {
     res.status(401).json({ error: 'Invalid or expired session' });
   }
@@ -502,6 +527,42 @@ app.patch('/api/auth/profile', authMiddleware, async (req, res) => {
     db.prepare('UPDATE users SET passwordHash = ? WHERE id = ?').run(hash, req.userId);
   }
 
+  res.json({ success: true });
+});
+
+// ─── ADMIN ROUTES ─────────────────────────────────────────────────────────────
+app.get('/api/admin/users', adminMiddleware, (req, res) => {
+  const users = db.prepare('SELECT id, username, email, role, createdAt FROM users ORDER BY createdAt ASC').all();
+  const trackerCounts = {};
+  trackers.forEach(t => { trackerCounts[t.userId] = (trackerCounts[t.userId] || 0) + 1; });
+  res.json(users.map(u => ({ ...u, trackerCount: trackerCounts[u.id] || 0 })));
+});
+
+app.delete('/api/admin/users/:id', adminMiddleware, (req, res) => {
+  const targetId = req.params.id;
+  if (targetId === req.userId) return res.status(400).json({ error: 'Cannot delete your own account' });
+  const user = db.prepare('SELECT id, username FROM users WHERE id = ?').get(targetId);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  // Stop & remove all their trackers
+  trackers.filter(t => t.userId === targetId).forEach(t => stopTrackerTimer(t.id));
+  trackers = trackers.filter(t => t.userId !== targetId);
+  db.prepare('DELETE FROM changes WHERE trackerId IN (SELECT id FROM trackers WHERE userId = ?)').run(targetId);
+  db.prepare('DELETE FROM trackers WHERE userId = ?').run(targetId);
+  db.prepare('DELETE FROM users WHERE id = ?').run(targetId);
+  res.json({ success: true });
+});
+
+app.get('/api/admin/trackers', adminMiddleware, (req, res) => {
+  res.json(trackers.map(({ lastBody, ...rest }) => rest));
+});
+
+app.delete('/api/admin/trackers/:id', adminMiddleware, (req, res) => {
+  const tracker = trackers.find(t => t.id === req.params.id);
+  if (!tracker) return res.status(404).json({ error: 'Not found' });
+  stopTrackerTimer(tracker.id);
+  trackers = trackers.filter(t => t.id !== tracker.id);
+  saveTrackers(trackers);
   res.json({ success: true });
 });
 
