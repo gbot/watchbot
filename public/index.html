@@ -1331,6 +1331,16 @@ function connectSSE() {
   evtSource = new EventSource('/api/events');
   evtSource.onmessage = (e) => {
     const data = JSON.parse(e.data);
+    if (data.type === 'force_logout') {
+      if (evtSource) { evtSource.close(); evtSource = null; }
+      currentUser = null;
+      trackers    = [];
+      renderTrackers();
+      updateBadge();
+      document.getElementById('userArea').style.display = 'none';
+      showAuthOverlay('login');
+      return;
+    }
     if (data.type === 'init' || data.type === 'update') {
       const prevStatuses = Object.fromEntries(trackers.map(t => [t.id, t.status]));
       if (data.type === 'init') {

@@ -421,6 +421,11 @@ function authMiddleware(req, res, next) {
   if (!token) return res.status(401).json({ error: 'Not authenticated' });
   try {
     const payload = jwt.verify(token, JWT_SECRET);
+    const userExists = db.prepare('SELECT id FROM users WHERE id = ?').get(payload.userId);
+    if (!userExists) {
+      res.clearCookie('watchdog_auth');
+      return res.status(401).json({ error: 'Account no longer exists' });
+    }
     req.userId   = payload.userId;
     req.username = payload.username;
     req.role     = payload.role || 'user';
@@ -550,6 +555,16 @@ app.delete('/api/admin/users/:id', adminMiddleware, (req, res) => {
   db.prepare('DELETE FROM changes WHERE trackerId IN (SELECT id FROM trackers WHERE userId = ?)').run(targetId);
   db.prepare('DELETE FROM trackers WHERE userId = ?').run(targetId);
   db.prepare('DELETE FROM users WHERE id = ?').run(targetId);
+
+  // Force-logout any active SSE sessions for the deleted user
+  const forceLogout = `data: ${JSON.stringify({ type: 'force_logout' })}\n\n`;
+  sseClients.forEach((client, clientId) => {
+    if (client.userId === targetId) {
+      try { client.res.write(forceLogout); client.res.end(); } catch {}
+      sseClients.delete(clientId);
+    }
+  });
+
   res.json({ success: true });
 });
 
