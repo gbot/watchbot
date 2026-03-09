@@ -1420,7 +1420,7 @@ async function addTracker() {
 async function removeTracker(id) {
   const t = trackers.find(t => t.id === id);
   if (!t) return;
-  const shouldDelete = await openDeleteConfirmDialog(t.label);
+  const shouldDelete = await openDeleteConfirmDialog(`tracker "${t.label}"`); 
   if (!shouldDelete) return;
   try {
     const res = await fetch(`/api/trackers/${id}`, { method: 'DELETE' });
@@ -1822,7 +1822,7 @@ function openDeleteConfirmDialog(label) {
   const deleteBtn = document.getElementById('confirmDeleteBtn');
   if (!modal || !message || !cancelBtn || !deleteBtn) return Promise.resolve(false);
   if (confirmResolver) closeConfirmDialog(false);
-  message.textContent = `Delete tracker "${label}"? This cannot be undone.`;
+  message.textContent = `Delete ${label}? This cannot be undone.`;
   modal.classList.add('show');
   modal.setAttribute('aria-hidden', 'false');
   document.body.classList.add('modal-open');
