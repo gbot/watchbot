@@ -1,0 +1,14 @@
+[
+  {
+    "id": "6923db4a-9c4e-44de-854e-0c8b2eec16e6",
+    "username": "gbot",
+    "passwordHash": "$2b$12$XJiwmCaFLYn.jtX9UWxE/ePSetWDatRZk/U5K/1ppkQUK9LdcOaa2",
+    "createdAt": "2026-03-09T12:03:32.620Z"
+  },
+  {
+    "id": "01797a1d-dd5b-4f82-a68a-e1d11c90ce46",
+    "username": "bob",
+    "passwordHash": "$2b$12$4l.Ps2G3NHbuDkOsbEZGDe.FpEZqAroBNTh2eswxmg5pXh0.NlZ4C",
+    "createdAt": "2026-03-09T12:55:57.559Z"
+  }
+]

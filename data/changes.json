@@ -1,0 +1,252 @@
+[
+  {
+    "id": "06a3c465-f082-4570-8c58-3868fbd9ca67",
+    "trackerId": "de61c56c-9a4b-4684-91bb-605a6568e10e",
+    "trackerLabel": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "url": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "detectedAt": "2026-03-09T13:35:05.612Z",
+    "summary": "The time display updated from \"2:35:00 a.m.\" to \"2:35:07 a.m.\", showing the clock has advanced by 7 seconds.",
+    "oldHash": "64768ea1439ced70",
+    "newHash": "d8c985cbda4cc70d"
+  },
+  {
+    "id": "2ea46264-1537-498c-a26b-a361c28ca362",
+    "trackerId": "de61c56c-9a4b-4684-91bb-605a6568e10e",
+    "trackerLabel": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "url": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "detectedAt": "2026-03-09T13:34:58.574Z",
+    "summary": "The current local time in Auckland changed from 2:31:23 a.m. to 2:35:00 a.m., advancing by approximately 3 minutes and 37 seconds.",
+    "oldHash": "011a76d1ad91b2be",
+    "newHash": "64768ea1439ced70"
+  },
+  {
+    "id": "12579b38-ff63-4e17-9d26-2ac9e7bb34e7",
+    "trackerId": "de61c56c-9a4b-4684-91bb-605a6568e10e",
+    "trackerLabel": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "url": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "detectedAt": "2026-03-09T13:31:23.064Z",
+    "summary": "The current local time in Auckland updated from 2:30:21 a.m. to 2:31:23 a.m., advancing by approximately one minute and two seconds.",
+    "oldHash": "52dcf402c1c34615",
+    "newHash": "011a76d1ad91b2be"
+  },
+  {
+    "id": "379845cf-e2cf-4baf-a2e4-a2feeaeeb0c4",
+    "trackerId": "de61c56c-9a4b-4684-91bb-605a6568e10e",
+    "trackerLabel": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "url": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "detectedAt": "2026-03-09T13:30:20.636Z",
+    "summary": "The current local time in Auckland updated from 2:25:11 a.m. to 2:30:21 a.m., advancing by about 5 minutes and 10 seconds while remaining on Tuesday, 10 March 2026 NZDT.",
+    "oldHash": "9e2c1ed628911913",
+    "newHash": "52dcf402c1c34615"
+  },
+  {
+    "id": "115158b2-8f63-4a84-98ea-fe81f438d8b2",
+    "trackerId": "de61c56c-9a4b-4684-91bb-605a6568e10e",
+    "trackerLabel": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "url": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "detectedAt": "2026-03-09T13:25:11.824Z",
+    "summary": "The current local time in Auckland changed from 2:23:49 a.m. to 2:25:11 a.m. NZDT on Tuesday, 10 March 2026. All other information on the page remained the same.",
+    "oldHash": "5810dbcc05afbb8c",
+    "newHash": "9e2c1ed628911913"
+  },
+  {
+    "id": "51aae410-63c0-4cab-aca8-0fb9244b9916",
+    "trackerId": "de61c56c-9a4b-4684-91bb-605a6568e10e",
+    "trackerLabel": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "url": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "detectedAt": "2026-03-09T13:23:49.244Z",
+    "summary": "The current local time in Auckland updated from 2:21:11 a.m. to 2:23:49 a.m., advancing by about 2 minutes and 38 seconds. All other content on the page remained the same.",
+    "oldHash": "c166e631331a4028",
+    "newHash": "5810dbcc05afbb8c"
+  },
+  {
+    "id": "52efe31f-0aee-4574-b12a-fa536508ca88",
+    "trackerId": "de61c56c-9a4b-4684-91bb-605a6568e10e",
+    "trackerLabel": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "url": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "detectedAt": "2026-03-09T13:21:10.106Z",
+    "summary": "Content changed (AI summary disabled for this resource).",
+    "oldHash": "05079e687fecc33a",
+    "newHash": "c166e631331a4028"
+  },
+  {
+    "id": "0c1febdb-1d97-4210-97ef-7d3afe432267",
+    "trackerId": "de61c56c-9a4b-4684-91bb-605a6568e10e",
+    "trackerLabel": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "url": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "detectedAt": "2026-03-09T13:21:03.479Z",
+    "summary": "Content changed (AI summary disabled for this resource).",
+    "oldHash": "2243159f15ea9baa",
+    "newHash": "05079e687fecc33a"
+  },
+  {
+    "id": "0ed289bc-e7ac-4d52-8c79-37793d5cb61e",
+    "trackerId": "de61c56c-9a4b-4684-91bb-605a6568e10e",
+    "trackerLabel": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "url": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "detectedAt": "2026-03-09T13:19:33.434Z",
+    "summary": "The current local time in Auckland updated from 2:18:21 a.m. to 2:19:34 a.m. The weather condition changed from \"Passing clouds\" to \"Clear.\"",
+    "oldHash": "2a588a735cab90f5",
+    "newHash": "2243159f15ea9baa"
+  },
+  {
+    "id": "337b4bac-43ac-4632-8b85-8d1db5f430ac",
+    "trackerId": "de61c56c-9a4b-4684-91bb-605a6568e10e",
+    "trackerLabel": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "url": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "detectedAt": "2026-03-09T13:18:20.836Z",
+    "summary": "The current local time in Auckland updated from 2:17:57 a.m. to 2:18:21 a.m., advancing by 24 seconds.",
+    "oldHash": "922fad3de2de6791",
+    "newHash": "2a588a735cab90f5"
+  },
+  {
+    "id": "f4899eae-1ffa-4caf-ab2b-68deee56e019",
+    "trackerId": "de61c56c-9a4b-4684-91bb-605a6568e10e",
+    "trackerLabel": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "url": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "detectedAt": "2026-03-09T13:17:56.454Z",
+    "summary": "The current local time in Auckland updated from 2:13:53 a.m. to 2:17:57 a.m., advancing by about 4 minutes. All other information on the page remained unchanged.",
+    "oldHash": "8c65f4cd88d555ad",
+    "newHash": "922fad3de2de6791"
+  },
+  {
+    "id": "070e706a-ca49-4644-81ff-77e1e66c5894",
+    "trackerId": "de61c56c-9a4b-4684-91bb-605a6568e10e",
+    "trackerLabel": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "url": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "detectedAt": "2026-03-09T13:13:52.842Z",
+    "summary": "Content changed (AI summary disabled for this resource).",
+    "oldHash": "d52b6b5d87efce07",
+    "newHash": "8c65f4cd88d555ad"
+  },
+  {
+    "id": "c0955303-2cd7-4cd5-a8cb-b5cc570eecbc",
+    "trackerId": "de61c56c-9a4b-4684-91bb-605a6568e10e",
+    "trackerLabel": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "url": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "detectedAt": "2026-03-09T13:13:51.702Z",
+    "summary": "Content changed (AI summary disabled for this resource).",
+    "oldHash": "6a6fb979831c6639",
+    "newHash": "d52b6b5d87efce07"
+  },
+  {
+    "id": "326fe27e-b5ec-482c-bdae-f6b69c2b5e23",
+    "trackerId": "de61c56c-9a4b-4684-91bb-605a6568e10e",
+    "trackerLabel": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "url": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "detectedAt": "2026-03-09T13:13:48.331Z",
+    "summary": "Content changed (AI summary disabled for this resource).",
+    "oldHash": "3e554665e4fe9fa9",
+    "newHash": "6a6fb979831c6639"
+  },
+  {
+    "id": "8f4bd589-7b35-49c5-803d-213c582d6375",
+    "trackerId": "de61c56c-9a4b-4684-91bb-605a6568e10e",
+    "trackerLabel": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "url": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "detectedAt": "2026-03-09T13:12:19.122Z",
+    "summary": "Content changed (AI summary disabled for this resource).",
+    "oldHash": "725794fdd96899f0",
+    "newHash": "3e554665e4fe9fa9"
+  },
+  {
+    "id": "f320ab4c-a0a7-41c8-a446-0dcc9dab870e",
+    "trackerId": "de61c56c-9a4b-4684-91bb-605a6568e10e",
+    "trackerLabel": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "url": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "detectedAt": "2026-03-09T13:11:33.511Z",
+    "summary": "Content changed (AI summary disabled for this resource).",
+    "oldHash": "a5641d6c10c9737c",
+    "newHash": "725794fdd96899f0"
+  },
+  {
+    "id": "e81d9e61-c7ce-4cf4-af44-e049bdb24a5f",
+    "trackerId": "de61c56c-9a4b-4684-91bb-605a6568e10e",
+    "trackerLabel": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "url": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "detectedAt": "2026-03-09T13:11:30.762Z",
+    "summary": "Content changed (AI summary disabled for this resource).",
+    "oldHash": "35a1adc6cd28658c",
+    "newHash": "a5641d6c10c9737c"
+  },
+  {
+    "id": "b264cb3e-123c-4358-ac38-5259fdd8a411",
+    "trackerId": "de61c56c-9a4b-4684-91bb-605a6568e10e",
+    "trackerLabel": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "url": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "detectedAt": "2026-03-09T13:11:29.232Z",
+    "summary": "Content changed (AI summary disabled for this resource).",
+    "oldHash": "8a8e59e182331ed7",
+    "newHash": "35a1adc6cd28658c"
+  },
+  {
+    "id": "ca315abb-b4c9-4f59-bcf2-6046c8538df8",
+    "trackerId": "de61c56c-9a4b-4684-91bb-605a6568e10e",
+    "trackerLabel": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "url": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "detectedAt": "2026-03-09T13:11:05.535Z",
+    "summary": "The current local time in Auckland changed from 2:09:58 a.m. to 2:11:06 a.m., advancing by about 1 minute and 8 seconds. All other content on the page remained the same.",
+    "oldHash": "2d904ab7256b72ba",
+    "newHash": "8a8e59e182331ed7"
+  },
+  {
+    "id": "7adc9ead-469b-4993-9478-bc9a71a6b71a",
+    "trackerId": "de61c56c-9a4b-4684-91bb-605a6568e10e",
+    "trackerLabel": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "url": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "detectedAt": "2026-03-09T13:09:58.094Z",
+    "summary": "The current local time in Auckland updated from 2:09:54 a.m. to 2:09:58 a.m., advancing by 4 seconds.",
+    "oldHash": "353fa5890a6bc4d5",
+    "newHash": "2d904ab7256b72ba"
+  },
+  {
+    "id": "8a728285-5c9f-4073-a43f-cdd8511b31fd",
+    "trackerId": "de61c56c-9a4b-4684-91bb-605a6568e10e",
+    "trackerLabel": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "url": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "detectedAt": "2026-03-09T13:09:54.409Z",
+    "summary": "The current local time in Auckland updated from 2:05:57 a.m. to 2:09:54 a.m., advancing by approximately 4 minutes.",
+    "oldHash": "1edc01770a91ae78",
+    "newHash": "353fa5890a6bc4d5"
+  },
+  {
+    "id": "6e09eb6b-03fe-480b-b28f-74b17e9f0762",
+    "trackerId": "de61c56c-9a4b-4684-91bb-605a6568e10e",
+    "trackerLabel": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "url": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "detectedAt": "2026-03-09T13:05:55.704Z",
+    "summary": "The current local time in Auckland changed from 1:53:44 a.m. to 2:05:57 a.m. NZDT on Tuesday, 10 March 2026. All other information on the page remained the same.",
+    "oldHash": "595ed901411e07ea",
+    "newHash": "1edc01770a91ae78"
+  },
+  {
+    "id": "9bde4840-07db-4fca-8dc1-59410f9ff5ce",
+    "trackerId": "de61c56c-9a4b-4684-91bb-605a6568e10e",
+    "trackerLabel": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "url": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "detectedAt": "2026-03-09T12:53:44.048Z",
+    "summary": "The current local time in Auckland updated from 1:53:41 a.m. to 1:53:44 a.m., advancing by 3 seconds.",
+    "oldHash": "913d247366234c00",
+    "newHash": "595ed901411e07ea"
+  },
+  {
+    "id": "2af19439-0e32-415d-84cc-34a36c98b11c",
+    "trackerId": "de61c56c-9a4b-4684-91bb-605a6568e10e",
+    "trackerLabel": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "url": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "detectedAt": "2026-03-09T12:53:41.012Z",
+    "summary": "The current time in Auckland changed from 1:30:39 a.m. to 1:53:41 a.m., advancing by about 23 minutes. The weather condition description changed from \"Clear\" to \"Passing clouds\" while the temperature remained at 16°C.",
+    "oldHash": "eecbb0dbb8185051",
+    "newHash": "913d247366234c00"
+  },
+  {
+    "id": "61555761-167d-4882-98c5-c433f9f0084f",
+    "trackerId": "de61c56c-9a4b-4684-91bb-605a6568e10e",
+    "trackerLabel": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "url": "https://www.timeanddate.com/worldclock/new-zealand/auckland",
+    "detectedAt": "2026-03-09T12:30:39.241Z",
+    "summary": "The current local time in Auckland updated from 1:30:09 a.m. to 1:30:39 a.m., showing the clock advanced by 30 seconds.",
+    "oldHash": "086f71ca49ee60fd",
+    "newHash": "eecbb0dbb8185051"
+  }
+]
