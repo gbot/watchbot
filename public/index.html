@@ -27,13 +27,13 @@
   <span class="topbar-badge" id="activeCount">0 active</span>
   <div class="user-area" id="userArea" style="display:none">
     <span class="user-name" id="userDisplay"></span>
-    <button class="btn-icon" id="adminPanelBtn" onclick="openAdminPanel()" title="Admin panel" style="display:none;color:var(--error)">
+    <button class="btn-icon" id="adminPanelBtn" onclick="openAdminPanel()" data-tip="Admin panel" style="display:none;color:var(--error)">
       <span class="material-icons" style="font-size:20px">admin_panel_settings</span>
     </button>
-    <button class="btn-icon" onclick="openProfile()" title="Account settings" style="color:var(--on-surface-medium)">
+    <button class="btn-icon" onclick="openProfile()" data-tip="Account settings" style="color:var(--on-surface-medium)">
       <span class="material-icons" style="font-size:20px">manage_accounts</span>
     </button>
-    <button class="btn btn-text" style="padding:6px 10px;font-size:13px" onclick="handleLogout()" title="Sign out">
+    <button class="btn btn-text" style="padding:6px 10px;font-size:13px" onclick="handleLogout()" data-tip="Sign out">
       <span class="material-icons" style="font-size:16px">logout</span> Sign out
     </button>
   </div>
@@ -115,7 +115,7 @@
           <option value="604800000">7 days</option>
         </select>
       </div>
-      <label class="ai-checkbox-row" title="When disabled, changes are still detected but no AI summary is generated">
+      <label class="ai-checkbox-row" data-tip="When disabled, changes are still detected but no AI summary is generated">
         <input type="checkbox" id="addAiSummary" />
         AI summary
       </label>
@@ -135,16 +135,16 @@
       </div>
       <span id="trackerFilterCount" style="font-size:12px;color:var(--on-surface-medium);white-space:nowrap;margin:0 2px"></span>
       <div style="display:flex;gap:2px;align-items:center;border-left:1px solid var(--divider);padding-left:6px;margin-left:2px">
-        <button class="btn-icon" onclick="setAllActive(true)" title="Activate all trackers" style="color:var(--on-surface-medium)">
+        <button class="btn-icon" onclick="setAllActive(true)" data-tip="Activate all trackers" style="color:var(--on-surface-medium)">
           <span class="material-icons" style="font-size:20px">play_circle</span>
         </button>
-        <button class="btn-icon" onclick="setAllActive(false)" title="Deactivate all trackers" style="color:var(--on-surface-medium)">
+        <button class="btn-icon" onclick="setAllActive(false)" data-tip="Deactivate all trackers" style="color:var(--on-surface-medium)">
           <span class="material-icons" style="font-size:20px">pause_circle</span>
         </button>
-        <button class="btn-icon" onclick="invertAll()" title="Invert active states" style="color:var(--on-surface-medium)">
+        <button class="btn-icon" onclick="invertAll()" data-tip="Invert active states" style="color:var(--on-surface-medium)">
           <span class="material-icons" style="font-size:20px">swap_vert</span>
         </button>
-        <button class="btn-icon" onclick="checkAll()" id="checkAllBtn" title="Check all now" style="color:var(--on-surface-medium)">
+        <button class="btn-icon" onclick="checkAll()" id="checkAllBtn" data-tip="Check all now" style="color:var(--on-surface-medium)">
           <span class="material-icons" style="font-size:20px">refresh</span>
         </button>
       </div>
@@ -153,15 +153,13 @@
           <input type="checkbox" id="showChangedOnlyChk" onchange="setShowChangedOnly(this.checked)" style="accent-color:var(--warning);width:15px;height:15px">
           New only
         </label>
-        <button id="dismissAllBtn" onclick="dismissAll()" style="display:none;font-size:13px;padding:4px 10px;color:var(--warning)" class="btn btn-text" title="Mark all changes as read">
+        <button id="dismissAllBtn" onclick="dismissAll()" style="display:none;font-size:13px;padding:4px 10px;color:var(--warning)" class="btn btn-text" data-tip="Mark all changes as read">
           <span class="material-icons" style="font-size:15px;vertical-align:middle">done_all</span> Mark all read
         </button>
-        <button id="expandAllBtn" onclick="_tcExpandAll()" style="display:none;font-size:13px;padding:4px 10px;color:var(--on-surface-medium)" class="btn btn-text" title="Expand all change histories">
-          <span class="material-icons" style="font-size:15px;vertical-align:middle">unfold_more</span> Expand all
-        </button>
-        <button id="collapseAllBtn" onclick="_tcCollapseAll()" style="display:none;font-size:13px;padding:4px 10px;color:var(--on-surface-medium)" class="btn btn-text" title="Collapse all change histories">
-          <span class="material-icons" style="font-size:15px;vertical-align:middle">unfold_less</span> Collapse all
-        </button>
+        <label style="display:flex;align-items:center;gap:5px;font-size:13px;color:var(--on-surface-medium);cursor:pointer;user-select:none">
+          <input type="checkbox" id="showLockedOnlyChk" onchange="setShowLockedOnly(this.checked)" style="accent-color:#e65100;width:15px;height:15px">
+          Locked only
+        </label>
         <label style="display:flex;align-items:center;gap:5px;font-size:13px;color:var(--on-surface-medium);cursor:pointer;user-select:none">
           <input type="checkbox" id="showActiveOnlyChk" onchange="setShowActiveOnly(this.checked)" style="accent-color:var(--primary);width:15px;height:15px">
           Active only
@@ -170,6 +168,14 @@
           <input type="checkbox" id="showAIOnlyChk" onchange="setShowAIOnly(this.checked)" style="accent-color:var(--primary);width:15px;height:15px">
           AI enabled
         </label>
+        <div style="display:flex;gap:2px;align-items:center;border-left:1px solid var(--divider);padding-left:8px;margin-left:2px">
+          <button id="expandAllBtn" onclick="_tcExpandAll()" style="display:none" class="btn-icon" data-tip="Expand all histories">
+            <span class="material-icons" style="font-size:18px">unfold_more</span>
+          </button>
+          <button id="collapseAllBtn" onclick="_tcCollapseAll()" style="display:none" class="btn-icon" data-tip="Collapse all histories">
+            <span class="material-icons" style="font-size:18px">unfold_less</span>
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -295,7 +301,7 @@
         <table class="admin-table">
           <thead>
             <tr>
-              <th style="width:36px"><input type="checkbox" id="adminUsersSelectAllOnPage" onchange="adminUserSelectAllPage(this.checked)" title="Select all on this page" style="cursor:pointer;accent-color:var(--primary)"></th>
+              <th style="width:36px"><input type="checkbox" id="adminUsersSelectAllOnPage" onchange="adminUserSelectAllPage(this.checked)" data-tip="Select all on this page" style="cursor:pointer;accent-color:var(--primary)"></th>
               <th>Username</th>
               <th>Email</th>
               <th>Role</th>
@@ -332,7 +338,7 @@
         <table class="admin-table">
           <thead>
             <tr>
-              <th style="width:36px"><input type="checkbox" id="adminSelectAllOnPage" onchange="adminTrackerSelectAllPage(this.checked)" title="Select all on this page" style="cursor:pointer;accent-color:var(--primary)"></th>
+              <th style="width:36px"><input type="checkbox" id="adminSelectAllOnPage" onchange="adminTrackerSelectAllPage(this.checked)" data-tip="Select all on this page" style="cursor:pointer;accent-color:var(--primary)"></th>
               <th>Label</th>
               <th>URL</th>
               <th>Owner</th>
@@ -463,6 +469,16 @@
       <button class="btn btn-text" style="align-self:flex-start;padding:4px 0" onclick="sendTestNotification()">
         <span class="material-icons" style="font-size:16px">notifications_active</span> Send test notification
       </button>
+      <div class="profile-divider" style="margin:10px 0"></div>
+      <label class="toggle-switch" style="font-size:14px;color:var(--on-surface)">
+        <input type="checkbox" id="profileGlobalEmail" onchange="saveProfileGlobalEmail(this.checked)">
+        <span class="toggle-track"></span>
+        Email notifications
+      </label>
+      <p style="font-size:12px;color:var(--on-surface-medium);margin:0">Master switch for all per-tracker email notifications. Requires an email address above.</p>
+      <button id="testEmailBtn" class="btn btn-text" style="align-self:flex-start;padding:4px 0;display:none" onclick="sendTestEmail()">
+        <span class="material-icons" style="font-size:16px">email</span> Send test email
+      </button>
     </div>
 
     <div class="profile-divider"></div>
@@ -531,9 +547,13 @@
         <option value="604800000">7 days</option>
       </select>
     </div>
-    <label class="ai-checkbox-row" style="margin-bottom:18px;font-size:14px">
+    <label class="ai-checkbox-row" style="margin-bottom:10px;font-size:14px">
       <input type="checkbox" id="toAiSummary" />
       Enable AI summary on changes
+    </label>
+    <label class="ai-checkbox-row" style="margin-bottom:18px;font-size:14px">
+      <input type="checkbox" id="toEmailNotify" />
+      Email notification on change
     </label>
     <div class="confirm-actions">
       <button type="button" class="btn btn-text" onclick="closeTrackerOptionsModal(false)">Cancel</button>

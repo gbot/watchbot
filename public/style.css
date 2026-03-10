@@ -303,14 +303,14 @@
     overflow: hidden;
     transition: max-height 0.3s ease;
   }
-  .diff-panel.open { max-height: 500px; }
+  .diff-panel.open { max-height: 1000px; }
   .diff-panel-inner {
     padding: 12px 20px 16px;
     display: flex; flex-direction: column; gap: 8px;
     background: #f8f9fa;
     border-top: 1px solid #e8eaed;
   }
-  .diff-block { border-radius: 4px; padding: 8px 10px; font-size: 12px; line-height: 1.6; word-break: break-word; }
+  .diff-block { border-radius: 4px; padding: 10px 12px; font-size: 13px; line-height: 1.65; word-break: break-word; }
   .diff-block-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 4px; opacity: 0.65; }
   .diff-removed { background: #fce8e6; color: #7f1d1d; border-left: 3px solid #f28b82; }
   .diff-added   { background: #e6f4ea; color: #1b5e20; border-left: 3px solid #81c995; }
@@ -1130,7 +1130,7 @@
     transition: opacity 0.3s ease, background 0.3s ease;
   }
   .tc-entry:last-child { border-bottom: none; }
-  .tc-entry-read { opacity: 0.55; }
+  .tc-entry-read { opacity: 0.72; }
   .tc-entry-unread {
     background: #fffbf0;
     border-left: 3px solid #f29900;
@@ -1166,8 +1166,7 @@
   }
   .tc-read-label {
     font-size: 11px;
-    color: var(--on-surface-light);
-    opacity: 0.6;
+    color: var(--on-surface-medium);
     white-space: nowrap;
     flex-shrink: 0;
   }
@@ -1216,3 +1215,47 @@
   .tc-lock-btn { color: var(--on-surface-medium); }
   .tc-lock-btn-active { color: #7c4dff; }
   .tc-lock-btn:hover { color: #7c4dff !important; background: rgba(124,77,255,0.1) !important; }
+
+  /* Soft (no-significance) change entries — auto-dismissed, visually de-emphasised */
+  .tc-entry-soft {
+    opacity: 0.6 !important;
+    background: #fafafa;
+    color: #666;
+  }
+  .tc-soft-chip {
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: #e8e8e8;
+    color: #777;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    flex-shrink: 0;
+  }
+
+  /* ── TOOLTIP ───────────────────────────────────────────────────────────── */
+  #wbTooltip {
+    position: fixed;
+    z-index: 99999;
+    pointer-events: none;
+    padding: 5px 10px;
+    border-radius: 6px;
+    background: #1a1a2e;
+    color: #fff;
+    font-size: 12px;
+    font-family: 'DM Sans', sans-serif;
+    line-height: 1.4;
+    letter-spacing: 0.1px;
+    max-width: 260px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    box-shadow: 0 4px 12px rgba(0,0,0,.28);
+    opacity: 0;
+    transform: translateY(4px);
+    transition: opacity 0.15s ease, transform 0.15s ease;
+  }
+  #wbTooltip.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }

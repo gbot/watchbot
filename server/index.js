@@ -9,6 +9,7 @@ const fs           = require('fs');
 const bcrypt       = require('bcryptjs');
 const jwt          = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
+const { SESClient, SendEmailCommand } = require('@aws-sdk/client-ses');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -31,6 +32,28 @@ function log(symbol, color, msg) {
   process.stdout.write(`${_c.dim}${ts}${_c.r}  ${color}${symbol}${_c.r}  ${msg}\n`);
 }
 
+// ─── CLAUDE MODEL RESOLVER ────────────────────────────────────────────────────
+const _modelAliases = {
+  'sonnet-4':   'claude-sonnet-4-20250514',
+  'sonnet4':    'claude-sonnet-4-20250514',
+  'sonnet':     'claude-sonnet-4-20250514',
+  'sonnet-3.5': 'claude-3-5-sonnet-20241022',
+  'sonnet3.5':  'claude-3-5-sonnet-20241022',
+  'sonnet-3':   'claude-3-5-sonnet-20241022',
+  'opus-4':     'claude-opus-4-5',
+  'opus4':      'claude-opus-4-5',
+  'opus':       'claude-opus-4-5',
+  'opus-3':     'claude-3-opus-20240229',
+  'haiku':      'claude-3-5-haiku-20241022',
+  'haiku-3.5':  'claude-3-5-haiku-20241022',
+  'haiku3.5':   'claude-3-5-haiku-20241022',
+};
+const CLAUDE_MODEL = (() => {
+  const raw = (process.env.CLAUDE_MODEL || 'sonnet-4').trim().toLowerCase();
+  return _modelAliases[raw] || process.env.CLAUDE_MODEL.trim();
+})();
+log('✦', _c.magenta, `Claude model: ${CLAUDE_MODEL}`);
+
 // ─── PERSISTENCE (SQLite) ─────────────────────────────────────────────────────
 const Database = require('better-sqlite3');
 const DATA_DIR  = path.join(__dirname, '../data');
@@ -48,6 +71,7 @@ try { db.exec('ALTER TABLE users ADD COLUMN role              TEXT    NOT NULL D
 try { db.exec('ALTER TABLE users ADD COLUMN disabled          INTEGER NOT NULL DEFAULT 0'); } catch {}
 try { db.exec('ALTER TABLE users ADD COLUMN trackerLimit      INTEGER'); } catch {}
 try { db.exec('ALTER TABLE users ADD COLUMN notificationsEnabled INTEGER NOT NULL DEFAULT 1'); } catch {}
+try { db.exec('ALTER TABLE users ADD COLUMN globalEmailNotify   INTEGER NOT NULL DEFAULT 1'); } catch {}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
@@ -77,7 +101,8 @@ db.exec(`
     error         TEXT,
     aiSummary     INTEGER DEFAULT 0,
     createdAt     TEXT,
-    position      INTEGER DEFAULT 0
+    position      INTEGER DEFAULT 0,
+    emailNotify   INTEGER DEFAULT 0
   );
 
   CREATE TABLE IF NOT EXISTS changes (
@@ -95,6 +120,9 @@ db.exec(`
 // Migrations for existing DBs
 try { db.prepare('ALTER TABLE changes ADD COLUMN dismissed INTEGER DEFAULT 0').run(); } catch {}
 try { db.prepare('ALTER TABLE changes ADD COLUMN locked   INTEGER DEFAULT 0').run(); } catch {}
+try { db.prepare('ALTER TABLE changes ADD COLUMN soft      INTEGER DEFAULT 0').run(); } catch {}
+try { db.prepare('ALTER TABLE changes ADD COLUMN snippet   TEXT').run(); } catch {}
+try { db.prepare('ALTER TABLE trackers ADD COLUMN emailNotify INTEGER DEFAULT 0').run(); } catch {}
 
 // Indexes for query performance — idempotent, safe to run on every startup
 db.exec(`
@@ -109,14 +137,19 @@ const _selectUserForAuth = db.prepare('SELECT id, role, disabled FROM users WHER
 function rowToTracker(row) {
   return {
     ...row,
-    active:       row.active    === 1,
-    aiSummary:    row.aiSummary !== 0,
+    active:       row.active      === 1,
+    aiSummary:    row.aiSummary   !== 0,
+    emailNotify:  row.emailNotify === 1,
     changeSnippet: row.changeSnippet ? JSON.parse(row.changeSnippet) : null,
   };
 }
 
 function loadTrackers() {
-  return db.prepare('SELECT * FROM trackers ORDER BY position ASC').all().map(rowToTracker);
+  const rows    = db.prepare('SELECT * FROM trackers ORDER BY position ASC').all();
+  const lockMap = {};
+  db.prepare('SELECT trackerId, COUNT(*) as c FROM changes WHERE locked = 1 GROUP BY trackerId')
+    .all().forEach(r => { lockMap[r.trackerId] = r.c; });
+  return rows.map(row => ({ ...rowToTracker(row), lockedCount: lockMap[row.id] || 0 }));
 }
 
 function loadChanges() {
@@ -131,18 +164,18 @@ const _upsertTracker = db.prepare(`
   INSERT INTO trackers
     (id, userId, label, url, interval, active, status, lastCheck, lastHash,
      lastBody, httpStatus, changeCount, changeSummary, changeSnippet, error,
-     aiSummary, createdAt, position)
+     aiSummary, createdAt, position, emailNotify)
   VALUES
     (@id, @userId, @label, @url, @interval, @active, @status, @lastCheck, @lastHash,
      @lastBody, @httpStatus, @changeCount, @changeSummary, @changeSnippet, @error,
-     @aiSummary, @createdAt, @position)
+     @aiSummary, @createdAt, @position, @emailNotify)
   ON CONFLICT(id) DO UPDATE SET
     label=excluded.label, url=excluded.url, interval=excluded.interval,
     active=excluded.active, status=excluded.status, lastCheck=excluded.lastCheck,
     lastHash=excluded.lastHash, lastBody=excluded.lastBody, httpStatus=excluded.httpStatus,
     changeCount=excluded.changeCount, changeSummary=excluded.changeSummary,
     changeSnippet=excluded.changeSnippet, error=excluded.error,
-    aiSummary=excluded.aiSummary, position=excluded.position
+    aiSummary=excluded.aiSummary, position=excluded.position, emailNotify=excluded.emailNotify
 `);
 
 function saveTrackers(list) {
@@ -169,6 +202,7 @@ function saveTrackers(list) {
         ...t,
         active:        t.active       ? 1 : 0,
         aiSummary:     t.aiSummary === false ? 0 : 1,
+        emailNotify:   t.emailNotify  ? 1 : 0,
         changeSnippet: t.changeSnippet ? JSON.stringify(t.changeSnippet) : null,
         position:      i,
       });
@@ -207,6 +241,7 @@ function _saveOneTracker(tracker) {
     ...tracker,
     active:        tracker.active       ? 1 : 0,
     aiSummary:     tracker.aiSummary === false ? 0 : 1,
+    emailNotify:   tracker.emailNotify  ? 1 : 0,
     changeSnippet: tracker.changeSnippet ? JSON.stringify(tracker.changeSnippet) : null,
     position:      trackers.indexOf(tracker),
   });
@@ -217,11 +252,84 @@ function _saveOneTracker(tracker) {
   );
 }
 
+// Classify a summary as a "soft" change — hash drifted (ads, timestamps, nonces)
+// but no real content change occurred. Soft changes are auto-dismissed and do
+// not trigger notifications so they don't create false-positive noise.
+const _softPatterns = [
+  // Explicit "identical" verdicts
+  /appear(?:s)? to be identical/,
+  /identical in content/,
+  /essentially identical/,
+  /virtually identical/,
+  /\bidentical\b.*\bsnapshot\b/,
+  // Pages/snapshots look/are the same
+  /(?:pages?|snapshots?|versions?) (?:are|look|appear(?:s)?) (?:essentially |virtually |basically |largely )?(?:identical|the same)/,
+  // "unchanged" variants
+  /(?:content|page|text|site|article).*(?:remains?|is|appears?|seem(?:s)?) (?:essentially |largely |basically |fundamentally |virtually |completely |totally )?unchanged/,
+  /(?:remains?|is|appears?) (?:essentially |largely |basically |fundamentally |virtually |completely |totally )?unchanged/,
+  // Content/text appears/seems the same
+  /(?:content|text|page|site|article) (?:appears?|seems?) (?:to be )?(?:essentially |largely |basically |fundamentally |virtually |completely |totally )?(?:the )?same/,
+  // "cannot identify/find/detect any (meaningful) changes/differences" — AI uncertainty phrasing
+  /cannot (?:identify|find|detect|see|spot|observe|discern) any (?:new |meaningful |significant |notable |real |substantial |material )?(?:content )?(?:changes?|differences?)/,
+  /unable to (?:identify|find|detect|see|spot|observe|discern) any (?:new |meaningful |significant |notable |real |substantial |material )?(?:content )?(?:changes?|differences?)/,
+  /could not (?:identify|find|detect|see|spot|observe|discern) any (?:new |meaningful |significant |notable |real |substantial |material )?(?:content )?(?:changes?|differences?)/,
+  // "no meaningful/significant/notable content changes/differences"
+  /no (?:meaningful|significant|notable|real|substantial|material|discernible|detectable|apparent|major|important) (?:content )?(?:changes?|differences?)/,
+  // "no X change/update/difference" variants
+  /no (?:new |substantive |meaningful |significant |notable |real |discernible |detectable |material |apparent )(?:change|update|content|difference|story|stories|announcement)/,
+  /no (?:change|update|difference|new story|new content|new announcement)s? (?:were |have been |are )?(?:detected|found|identified|observed)/,
+  // "no new stories/announcements/updates" phrasing
+  /no new (?:stories|story|articles?|announcements?|updates?|posts?|content)/,
+  // "changes appear/are trivial/minor/cosmetic"
+  /(?:changes?|differences?) (?:are|appear(?:s)?|seem(?:s)?) (?:to be )?(?:trivial|minor|cosmetic|insignificant|negligible|superficial)/,
+  // Passive "nothing changed" variants
+  /nothing (?:has |have )?changed/,
+  /(?:content|page) (?:appears?|seems?) to (?:remain|be) the same/,
+];
+
+function isSoftChange(summary) {
+  if (!summary) return false;
+  const s = summary.toLowerCase();
+  return _softPatterns.some(re => re.test(s));
+}
+
+// ─── PRE-FLIGHT TEXT SIMILARITY ───────────────────────────────────────────────
+// Word-frequency diff: counts how many word tokens were added or removed
+// (ignoring order). When fewer than MINOR_ABS words changed AND those changes
+// represent less than MINOR_PCT of the total content, we can skip the AI call
+// entirely — the diff is almost certainly a counter, timestamp, or ad nonce.
+const MINOR_ABS = 20;    // absolute word-frequency change ceiling
+const MINOR_PCT = 0.02;  // 2 % relative change ceiling
+
+function _wordFreq(text) {
+  const m = {};
+  for (const w of text.split(/\s+/)) if (w) m[w] = (m[w] || 0) + 1;
+  return m;
+}
+
+function _isMinorTextChange(oldText, newText) {
+  if (!oldText || !newText) return false;
+  const om = _wordFreq(oldText);
+  const nm = _wordFreq(newText);
+  // Quick length guard — if the page grew or shrank by more than the
+  // percentage threshold, fast-fail without scanning every word.
+  const ow = Object.values(om).reduce((a, b) => a + b, 0);
+  const nw = Object.values(nm).reduce((a, b) => a + b, 0);
+  if (Math.abs(ow - nw) > MINOR_ABS) return false;
+  // Count net token additions + removals across the vocabulary
+  const vocab = new Set([...Object.keys(om), ...Object.keys(nm)]);
+  let delta = 0;
+  for (const w of vocab) delta += Math.abs((om[w] || 0) - (nm[w] || 0));
+  const total = Math.max(ow, nw, 1);
+  return delta <= MINOR_ABS && (delta / total) <= MINOR_PCT;
+}
+
 function saveChange(change) {
+  const snippetJson = change.snippet ? JSON.stringify(change.snippet) : null;
   db.prepare(`
-    INSERT INTO changes (id, trackerId, trackerLabel, url, detectedAt, summary, oldHash, newHash)
-    VALUES (@id, @trackerId, @trackerLabel, @url, @detectedAt, @summary, @oldHash, @newHash)
-  `).run(change);
+    INSERT INTO changes (id, trackerId, trackerLabel, url, detectedAt, summary, oldHash, newHash, dismissed, soft, snippet)
+    VALUES (@id, @trackerId, @trackerLabel, @url, @detectedAt, @summary, @oldHash, @newHash, @dismissed, @soft, @snippet)
+  `).run({ dismissed: 0, soft: 0, snippet: null, ...change, snippet: snippetJson });
   // Only prune when the unlocked pool actually exceeds the cap — avoids a
   // redundant DELETE subquery scan on every save when well under the limit.
   const { c } = db.prepare('SELECT COUNT(*) as c FROM changes WHERE locked = 0').get();
@@ -233,6 +341,19 @@ function saveChange(change) {
     `).run();
   }
 }
+
+// Repair any status desync that may have persisted to the DB before this fix.
+// A tracker whose status was saved as 'ok' (or 'error') while it still has
+// undismissed, unlocked changes should have status 'changed' so the 'New only'
+// filter and the unread badge work correctly from the very first SSE init.
+db.prepare(`
+  UPDATE trackers
+  SET    status = 'changed'
+  WHERE  status != 'changed'
+  AND    id IN (
+    SELECT DISTINCT trackerId FROM changes WHERE dismissed = 0
+  )
+`).run();
 
 let trackers = loadTrackers();
 
@@ -250,6 +371,55 @@ let trackers = loadTrackers();
     db.prepare('UPDATE users SET role = ? WHERE username = ?').run('superadmin', 'wpnadmin');
   }
 })();
+
+// ─── EMAIL (AWS SES API) ─────────────────────────────────────────────────────
+function _isSesConfigured() {
+  return !!(process.env.AWS_REGION && process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY);
+}
+
+function _sesClient() {
+  return new SESClient({
+    region: process.env.AWS_REGION,
+    credentials: {
+      accessKeyId:     process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    },
+  });
+}
+
+async function sendChangeEmail(tracker, summary, owner) {
+  if (!_isSesConfigured()) return;
+  const from    = process.env.SES_FROM || 'Watchbot <noreply@example.com>';
+  const dateStr = new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+  const html = `
+<div style="font-family:system-ui,sans-serif;max-width:600px;margin:0 auto;color:#1a1a1a">
+  <div style="background:#6200ea;padding:20px 24px;border-radius:8px 8px 0 0">
+    <span style="color:#fff;font-size:18px;font-weight:600">&#128276; Watchbot — Change Detected</span>
+  </div>
+  <div style="border:1px solid #e0e0e0;border-top:none;padding:24px;border-radius:0 0 8px 8px">
+    <p style="margin:0 0 8px"><strong>WatchBot:</strong> ${tracker.label.replace(/</g,'&lt;')}</p>
+    <p style="margin:0 0 16px"><strong>URL:</strong> <a href="${tracker.url}">${tracker.url.replace(/</g,'&lt;')}</a></p>
+    <p style="margin:0 0 8px;font-weight:600">Summary</p>
+    <div style="background:#f5f5f5;padding:12px 16px;border-radius:6px;font-size:14px;line-height:1.6">${summary.replace(/</g,'&lt;').replace(/\n/g,'<br>')}</div>
+    <p style="margin:16px 0 0;font-size:12px;color:#757575">Detected at ${dateStr}</p>
+  </div>
+</div>`;
+  const text = `Watchbot — Change Detected\n\nWatchBot: ${tracker.label}\nURL: ${tracker.url}\n\nSummary:\n${summary}\n\nDetected at ${dateStr}`;
+
+  const command = new SendEmailCommand({
+    Source: from,
+    Destination: { ToAddresses: [owner.email] },
+    Message: {
+      Subject: { Data: `Change detected: ${tracker.label}`, Charset: 'UTF-8' },
+      Body: {
+        Html: { Data: html,  Charset: 'UTF-8' },
+        Text: { Data: text,  Charset: 'UTF-8' },
+      },
+    },
+  });
+  await _sesClient().send(command);
+  log('✉', _c.cyan, `Email sent  "${tracker.label}"  → ${owner.email}`);
+}
 
 // ─── VISIBLE TEXT EXTRACTION ──────────────────────────────────────────────────
 // Strips scripts, styles, comments and all HTML tags — leaving only the words
@@ -332,7 +502,7 @@ async function getChangeSummary(oldText, newText, url) {
     const res = await axios.post(
       'https://api.anthropic.com/v1/messages',
       {
-        model:      'claude-sonnet-4-20250514',
+        model:      CLAUDE_MODEL,
         max_tokens: 500,
         messages: [{
           role:    'user',
@@ -372,8 +542,8 @@ ${newText.slice(0, 3000)}`
 
 // ─── CORE CHECK ───────────────────────────────────────────────────────────────
 function computeDiffSnippet(oldText, newText) {
-  const CONTEXT  = 12; // words of context each side
-  const MAX_CHARS = 400;
+  const CONTEXT   = 25; // words of context each side
+  const MAX_CHARS = 800;
 
   const ow = oldText.split(/\s+/).filter(Boolean);
   const nw = newText.split(/\s+/).filter(Boolean);
@@ -423,19 +593,37 @@ async function checkTracker(tracker) {
       log('✓', _c.green, `Baseline  "${tracker.label}"  [HTTP ${status}]`);
 
     } else if (hash !== tracker.lastHash) {
-      log('⚡', _c.yellow, `Changed   "${tracker.label}"  [HTTP ${status}]${tracker.aiSummary === false ? '' : '  — fetching AI summary…'}`);
+      // Pre-flight: skip the AI call when the word-level diff is tiny.
+      // Counters, timestamps, and ad nonces change the hash but produce
+      // near-identical text — no need to pay for a "no changes" summary.
+      const preflightSoft = tracker.lastBody
+        ? _isMinorTextChange(tracker.lastBody, structuredText)
+        : false;
+
+      log('⚡', _c.yellow, `Changed   "${tracker.label}"  [HTTP ${status}]${
+        preflightSoft                  ? '  — minor diff, skipping AI' :
+        tracker.aiSummary === false    ? '' :
+                                         '  — fetching AI summary…'
+      }`);
 
       let summary;
-      if (tracker.aiSummary === false) {
+      if (preflightSoft) {
+        summary = 'No significant content changes detected.';
+      } else if (tracker.aiSummary === false) {
         summary = 'Content changed.';
       } else {
         summary = await getChangeSummary(tracker.lastBody, structuredText, tracker.url);
       }
 
-      tracker.changeCount   = (tracker.changeCount || 0) + 1;
-      tracker.status        = 'changed';
-      tracker.changeSummary = summary;
-      tracker.changeSnippet = computeDiffSnippet(tracker.lastBody || '', structuredText);
+      const soft    = preflightSoft || isSoftChange(summary);
+      const snippet = computeDiffSnippet(tracker.lastBody || '', structuredText);
+
+      tracker.changeCount = (tracker.changeCount || 0) + 1;
+      if (!soft) {
+        tracker.status        = 'changed';
+        tracker.changeSummary = summary;
+        tracker.changeSnippet = snippet;
+      }
 
       saveChange({
         id:           uuidv4(),
@@ -445,15 +633,35 @@ async function checkTracker(tracker) {
         detectedAt:   now,
         summary,
         oldHash:      tracker.lastHash,
-        newHash:      hash
+        newHash:      hash,
+        dismissed:    soft ? 1 : 0,
+        soft:         soft ? 1 : 0,
+        snippet,
       });
 
       tracker.lastHash = hash;
       tracker.lastBody = structuredText;
-      log('⚡', _c.yellow, `Saved     "${tracker.label}"  — ${summary.slice(0, 120)}`);
+      log(soft ? '~' : '⚡', soft ? _c.dim : _c.yellow, `${soft ? 'Soft chg  ' : 'Saved     '} "${tracker.label}"  — ${summary.slice(0, 120)}`);
+
+      // Fire email notification only for real (non-soft) changes,
+      // and only when the user's global email toggle is enabled.
+      if (!soft && tracker.emailNotify) {
+        const owner = db.prepare('SELECT email, globalEmailNotify FROM users WHERE id = ?').get(tracker.userId);
+        if (owner?.email && owner.globalEmailNotify !== 0) {
+          sendChangeEmail(tracker, summary, owner).catch(err =>
+            log('✗', _c.red, `Email error "${tracker.label}": ${err.message}`)
+          );
+        }
+      }
 
     } else {
-      tracker.status = 'ok';
+      // Only move back to 'ok' if there are no unread (undismissed, unlocked)
+      // changes waiting for the user — otherwise a routine no-change check
+      // would silently reset the 'changed' status and break the 'New only' filter.
+      const undismissed = db.prepare(
+        'SELECT COUNT(*) as c FROM changes WHERE trackerId = ? AND dismissed = 0'
+      ).get(tracker.id).c;
+      tracker.status = undismissed > 0 ? 'changed' : 'ok';
       log('·', _c.dim, `No change "${tracker.label}"  [HTTP ${status}]`);
     }
 
@@ -650,9 +858,9 @@ app.get('/api/auth/me', (req, res) => {
 });
 
 app.get('/api/auth/profile', authMiddleware, (req, res) => {
-  const user = db.prepare('SELECT id, username, email, createdAt, notificationsEnabled FROM users WHERE id = ?').get(req.userId);
+  const user = db.prepare('SELECT id, username, email, createdAt, notificationsEnabled, globalEmailNotify FROM users WHERE id = ?').get(req.userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
-  res.json({ ...user, notificationsEnabled: user.notificationsEnabled !== 0 });
+  res.json({ ...user, notificationsEnabled: user.notificationsEnabled !== 0, globalEmailNotify: user.globalEmailNotify !== 0 });
 });
 
 app.delete('/api/auth/profile', authMiddleware, async (req, res) => {
@@ -677,7 +885,7 @@ app.delete('/api/auth/profile', authMiddleware, async (req, res) => {
 app.patch('/api/auth/profile', authMiddleware, async (req, res) => {
   const { email, currentPassword, newPassword } = req.body;
 
-  if (email === undefined && newPassword === undefined && req.body.notificationsEnabled === undefined)
+  if (email === undefined && newPassword === undefined && req.body.notificationsEnabled === undefined && req.body.globalEmailNotify === undefined)
     return res.status(400).json({ error: 'Nothing to update' });
 
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.userId);
@@ -695,6 +903,11 @@ app.patch('/api/auth/profile', authMiddleware, async (req, res) => {
       .run(req.body.notificationsEnabled ? 1 : 0, req.userId);
   }
 
+  if (req.body.globalEmailNotify !== undefined) {
+    db.prepare('UPDATE users SET globalEmailNotify = ? WHERE id = ?')
+      .run(req.body.globalEmailNotify ? 1 : 0, req.userId);
+  }
+
   if (newPassword !== undefined) {
     if (!currentPassword)
       return res.status(400).json({ error: 'Current password is required' });
@@ -707,6 +920,39 @@ app.patch('/api/auth/profile', authMiddleware, async (req, res) => {
   }
 
   res.json({ success: true });
+});
+
+app.get('/api/auth/email-configured', authMiddleware, (req, res) => {
+  res.json({ configured: _isSesConfigured() });
+});
+
+app.post('/api/auth/test-email', authMiddleware, async (req, res) => {
+  if (!_isSesConfigured())
+    return res.status(503).json({ error: 'Email is not configured on this server.' });
+  const user = db.prepare('SELECT email FROM users WHERE id = ?').get(req.userId);
+  if (!user?.email)
+    return res.status(400).json({ error: 'No email address on your account.' });
+
+  const from    = process.env.SES_FROM || 'Watchbot <noreply@example.com>';
+  const command = new SendEmailCommand({
+    Source: from,
+    Destination: { ToAddresses: [user.email] },
+    Message: {
+      Subject: { Data: 'Watchbot — test email', Charset: 'UTF-8' },
+      Body: {
+        Text: { Data: 'This is a test email from Watchbot. Email notifications are working correctly.', Charset: 'UTF-8' },
+        Html: { Data: '<p style="font-family:system-ui,sans-serif">This is a test email from <strong>Watchbot</strong>. Email notifications are working correctly.</p>', Charset: 'UTF-8' },
+      },
+    },
+  });
+  try {
+    await _sesClient().send(command);
+    log('✉', _c.cyan, `Test email sent → ${user.email}`);
+    res.json({ success: true });
+  } catch (err) {
+    log('✗', _c.red, `Test email error: ${err.message}`);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ─── ADMIN ROUTES ─────────────────────────────────────────────────────────────
@@ -939,7 +1185,7 @@ app.post('/api/ai/find-resources', authMiddleware, async (req, res) => {
     const response = await axios.post(
       'https://api.anthropic.com/v1/messages',
       {
-        model: 'claude-sonnet-4-20250514',
+        model: CLAUDE_MODEL,
         max_tokens: 8192,
         messages: [{
           role: 'user',
@@ -1036,7 +1282,7 @@ app.get('/api/trackers', authMiddleware, (req, res) => {
 });
 
 app.post('/api/trackers', authMiddleware, async (req, res) => {
-  const { url, label, interval, aiSummary } = req.body;
+  const { url, label, interval, aiSummary, emailNotify } = req.body;
   if (!url) return res.status(400).json({ error: 'url is required' });
   try { new URL(url); } catch { return res.status(400).json({ error: 'Invalid URL' }); }
 
@@ -1061,6 +1307,7 @@ app.post('/api/trackers', authMiddleware, async (req, res) => {
     changeSummary: null,
     error:        null,
     aiSummary:    aiSummary === true,
+    emailNotify:  emailNotify === true,
     createdAt:    new Date().toISOString(),
     userId:       req.userId
   };
@@ -1111,7 +1358,7 @@ app.delete('/api/trackers/:id', authMiddleware, (req, res) => {
 app.patch('/api/trackers/:id', authMiddleware, (req, res) => {
   const tracker = trackers.find(t => t.id === req.params.id && t.userId === req.userId);
   if (!tracker) return res.status(404).json({ error: 'Not found' });
-  ['active', 'label', 'interval', 'aiSummary'].forEach(k => {
+  ['active', 'label', 'interval', 'aiSummary', 'emailNotify'].forEach(k => {
     if (req.body[k] !== undefined) tracker[k] = req.body[k];
   });
   if (req.body.active === false) stopTrackerTimer(tracker.id);
@@ -1132,7 +1379,7 @@ app.post('/api/trackers/:id/check', authMiddleware, async (req, res) => {
 app.post('/api/trackers/:id/dismiss', authMiddleware, (req, res) => {
   const tracker = trackers.find(t => t.id === req.params.id && t.userId === req.userId);
   if (!tracker) return res.status(404).json({ error: 'Not found' });
-  db.prepare('UPDATE changes SET dismissed = 1 WHERE trackerId = ? AND locked = 0').run(req.params.id);
+  db.prepare('UPDATE changes SET dismissed = 1 WHERE trackerId = ?').run(req.params.id);
   tracker.status        = 'ok';
   tracker.changeSummary = null;
   tracker.changeSnippet = null;
@@ -1141,11 +1388,10 @@ app.post('/api/trackers/:id/dismiss', authMiddleware, (req, res) => {
 });
 
 app.post('/api/changes/:id/dismiss', authMiddleware, (req, res) => {
-  const change = db.prepare('SELECT trackerId, locked FROM changes WHERE id = ?').get(req.params.id);
+  const change = db.prepare('SELECT trackerId FROM changes WHERE id = ?').get(req.params.id);
   if (!change) return res.status(404).json({ error: 'Not found' });
   const tracker = trackers.find(t => t.id === change.trackerId && t.userId === req.userId);
   if (!tracker) return res.status(403).json({ error: 'Forbidden' });
-  if (change.locked) return res.status(409).json({ error: 'Change is locked' });
   db.prepare('UPDATE changes SET dismissed = 1 WHERE id = ?').run(req.params.id);
   // Reset tracker status when no undismissed changes remain
   const undismissed = db.prepare('SELECT COUNT(*) as c FROM changes WHERE trackerId = ? AND dismissed = 0').get(tracker.id).c;
@@ -1165,6 +1411,8 @@ app.post('/api/changes/:id/lock', authMiddleware, (req, res) => {
   if (!tracker) return res.status(403).json({ error: 'Forbidden' });
   const newLocked = change.locked ? 0 : 1;
   db.prepare('UPDATE changes SET locked = ? WHERE id = ?').run(newLocked, req.params.id);
+  tracker.lockedCount = Math.max((tracker.lockedCount || 0) + (newLocked === 1 ? 1 : -1), 0);
+  _saveOneTracker(tracker);
   res.json({ locked: newLocked === 1 });
 });
 
@@ -1192,9 +1440,10 @@ app.get('/api/trackers/:id/changes', authMiddleware, (req, res) => {
   const limit  = Math.min(parseInt(req.query.limit) || 5, 20);
   const offset = Math.max(parseInt(req.query.offset) || 0, 0);
   const total  = db.prepare('SELECT COUNT(*) as c FROM changes WHERE trackerId = ?').get(req.params.id).c;
-  const items  = db.prepare(
-    'SELECT id, detectedAt, summary, dismissed, locked FROM changes WHERE trackerId = ? ORDER BY detectedAt DESC LIMIT ? OFFSET ?'
+  const rows  = db.prepare(
+    'SELECT id, detectedAt, summary, dismissed, locked, soft, snippet FROM changes WHERE trackerId = ? ORDER BY detectedAt DESC LIMIT ? OFFSET ?'
   ).all(req.params.id, limit, offset);
+  const items = rows.map(r => ({ ...r, snippet: r.snippet ? JSON.parse(r.snippet) : null }));
   res.json({ items, total, offset, limit });
 });
 

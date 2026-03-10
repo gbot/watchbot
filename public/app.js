@@ -6,11 +6,85 @@ let evtSource   = null;
 let confirmResolver   = null;
 let confirmKeyHandler = null;
 
+// ─── TOOLTIP ENGINE ──────────────────────────────────────────────────────────
+// Single floating element driven by event delegation — works for all elements
+// including those added dynamically after page load. Elements should use
+// data-tip="…" instead of title="…" to get the styled tooltip.
+(function () {
+  const el = document.createElement('div');
+  el.id = 'wbTooltip';
+  document.body.appendChild(el);
+
+  let showTimer, hideTimer;
+  const OFFSET = 10; // px gap between cursor and tooltip box
+
+  function show(text, x, y) {
+    clearTimeout(hideTimer);
+    el.textContent = text;
+    // Temporarily make visible off-screen to measure size
+    el.style.left = '-9999px'; el.style.top = '-9999px';
+    el.classList.add('visible');
+    const tw = el.offsetWidth;
+    const th = el.offsetHeight;
+    // Position: default below-right, flip if it would clip viewport edge
+    let lx = x + OFFSET;
+    let ly = y + OFFSET;
+    if (lx + tw > window.innerWidth  - 8) lx = x - tw - OFFSET;
+    if (ly + th > window.innerHeight - 8) ly = y - th - OFFSET;
+    el.style.left = lx + 'px';
+    el.style.top  = ly + 'px';
+  }
+
+  function hide() {
+    clearTimeout(showTimer);
+    el.classList.remove('visible');
+  }
+
+  // Find closest ancestor (or self) with data-tip
+  function tipTarget(node) {
+    while (node && node !== document.body) {
+      if (node.dataset?.tip) return node;
+      node = node.parentElement;
+    }
+    return null;
+  }
+
+  document.addEventListener('mouseover', e => {
+    const target = tipTarget(e.target);
+    if (!target) return;
+    clearTimeout(hideTimer);
+    showTimer = setTimeout(() => show(target.dataset.tip, e.clientX, e.clientY), 350);
+  });
+
+  document.addEventListener('mousemove', e => {
+    if (!el.classList.contains('visible')) return;
+    const tw = el.offsetWidth, th = el.offsetHeight;
+    let lx = e.clientX + OFFSET;
+    let ly = e.clientY + OFFSET;
+    if (lx + tw > window.innerWidth  - 8) lx = e.clientX - tw - OFFSET;
+    if (ly + th > window.innerHeight - 8) ly = e.clientY - th - OFFSET;
+    el.style.left = lx + 'px';
+    el.style.top  = ly + 'px';
+  });
+
+  document.addEventListener('mouseout', e => {
+    const target = tipTarget(e.target);
+    if (!target) return;
+    clearTimeout(showTimer);
+    hideTimer = setTimeout(hide, 80);
+  });
+
+  // Hide on scroll or any click
+  document.addEventListener('scroll', hide, true);
+  document.addEventListener('mousedown', hide);
+})();
+
 // Tracker filter (client-side)
 let trackerFilter    = '';
 let showChangedOnly  = false;
 let showActiveOnly   = false;
 let showAIOnly       = false;
+let showLockedOnly   = false;
 
 // Admin panel — search & pagination state
 const ADMIN_PAGE_SIZE      = 25;
@@ -90,6 +164,7 @@ function showApp() {
   showChangedOnly = document.getElementById('showChangedOnlyChk')?.checked ?? false;
   showActiveOnly  = document.getElementById('showActiveOnlyChk')?.checked  ?? false;
   showAIOnly      = document.getElementById('showAIOnlyChk')?.checked      ?? false;
+  showLockedOnly  = document.getElementById('showLockedOnlyChk')?.checked  ?? false;
   trackerFilter   = (document.getElementById('trackerSearch')?.value ?? '').trim().toLowerCase();
   connectSSE();
 }
@@ -244,20 +319,20 @@ function renderAdminUsersTable(users) {
         <td>${u.id === currentUser.id ? '—' : `<input type="number" min="0" value="${u.trackerLimit ?? ''}" placeholder="∞"
           style="width:56px;padding:3px 6px;border:1px solid var(--divider);border-radius:6px;font-size:12px;background:var(--surface)"
           onchange="adminSetTrackerLimit('${u.id}', this.value)" title="Max trackers (blank = unlimited)" />`}</td>
-        <td>${u.id === currentUser.id ? '' : `<label class="toggle-switch" title="${u.disabled ? 'Enable' : 'Disable'} account">
+        <td>${u.id === currentUser.id ? '' : `<label class="toggle-switch" data-tip="${u.disabled ? 'Enable' : 'Disable'} account">
           <input type="checkbox" ${u.disabled ? '' : 'checked'} onchange="adminToggleDisabled('${u.id}', !this.checked)">
           <span class="toggle-track"></span>
         </label>`}</td>
         <td style="color:var(--on-surface-medium);font-size:12px">${new Date(u.createdAt).toLocaleDateString()}</td>
         <td>${u.id === currentUser.id ? '' : `
           <div class="btn-group">
-            <button class="btn-icon" style="color:var(--on-surface-medium)" title="Edit user" onclick="openEditUser('${u.id}','${escHtml(u.username)}','${escHtml(u.email||'')}','${u.role}','${u.trackerLimit??''}')">
+            <button class="btn-icon" style="color:var(--on-surface-medium)" data-tip="Edit user" onclick="openEditUser('${u.id}','${escHtml(u.username)}','${escHtml(u.email||'')}','${u.role}','${u.trackerLimit??''}')">
               <span class="material-icons" style="font-size:18px">edit</span>
             </button>
-            <button class="btn-icon" style="color:var(--primary)" title="Impersonate user" onclick="adminImpersonate('${u.id}','${escHtml(u.username)}')">
+            <button class="btn-icon" style="color:var(--primary)" data-tip="Impersonate user" onclick="adminImpersonate('${u.id}','${escHtml(u.username)}')">
               <span class="material-icons" style="font-size:18px">theater_comedy</span>
             </button>
-            <button class="btn-icon" style="color:var(--error)" title="Delete user" onclick="adminDeleteUser('${u.id}','${escHtml(u.username)}')">
+            <button class="btn-icon" style="color:var(--error)" data-tip="Delete user" onclick="adminDeleteUser('${u.id}','${escHtml(u.username)}')">
               <span class="material-icons" style="font-size:18px">person_remove</span>
             </button>
           </div>`}</td>
@@ -392,16 +467,16 @@ function renderAdminTrackersTable(all, userMap) {
       <tr>
         <td><input type="checkbox" data-sel="${t.id}" ${adminTrackersSelected.has(t.id) ? 'checked' : ''} onchange="adminTrackerSelectToggle('${t.id}', this.checked)" style="cursor:pointer;accent-color:var(--primary)"></td>
         <td>${escHtml(t.label || t.url)}</td>
-        <td><span class="admin-url" title="${escHtml(t.url)}">${escHtml(t.url)}</span></td>
+        <td><span class="admin-url" data-tip="${escHtml(t.url)}">${escHtml(t.url)}</span></td>
         <td style="font-size:12px;color:var(--on-surface-medium)">${escHtml(userMap[t.userId] || t.userId)}</td>
         <td style="font-size:12px;color:var(--on-surface-medium);white-space:nowrap">${intervalText(t.interval)}</td>
         <td><span class="chip chip-${t.status === 'changed' ? 'changed' : t.status === 'error' ? 'error' : t.active ? 'ok' : 'paused'}" style="font-size:11px">${t.active ? t.status : 'paused'}</span></td>
         <td style="text-align:center">${t.changeCount || 0}</td>
-        <td><label class="toggle-switch" title="${t.active ? 'Disable' : 'Enable'} tracker">
+        <td><label class="toggle-switch" data-tip="${t.active ? 'Disable' : 'Enable'} tracker">
           <input type="checkbox" ${t.active ? 'checked' : ''} onchange="adminToggleTracker('${t.id}', this.checked)">
           <span class="toggle-track"></span>
         </label></td>
-        <td><button class="btn-icon" style="color:var(--error)" title="Delete tracker" onclick="adminDeleteTracker('${t.id}','${escHtml(t.label || t.url)}')"><span class="material-icons" style="font-size:18px">delete_outline</span></button></td>
+        <td><button class="btn-icon" style="color:var(--error)" data-tip="Delete tracker" onclick="adminDeleteTracker('${t.id}','${escHtml(t.label || t.url)}')"><span class="material-icons" style="font-size:18px">delete_outline</span></button></td>
       </tr>`).join('');
   }
   _syncAdminTrackersSelectAll();
@@ -751,6 +826,16 @@ async function openProfile() {
       const profile = await res.json();
       document.getElementById('profileEmail').value = profile.email || '';
       document.getElementById('profileNotifications').checked = profile.notificationsEnabled !== false;
+      document.getElementById('profileGlobalEmail').checked   = profile.globalEmailNotify  !== false;
+    }
+  } catch {}
+
+  try {
+    const cfgRes = await fetch('/api/auth/email-configured');
+    if (cfgRes.ok) {
+      const { configured } = await cfgRes.json();
+      const btn = document.getElementById('testEmailBtn');
+      if (btn) btn.style.display = configured ? '' : 'none';
     }
   } catch {}
 
@@ -852,6 +937,24 @@ function sendTestNotification() {
   }
 }
 
+async function sendTestEmail() {
+  const btn = document.getElementById('testEmailBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+  try {
+    const res  = await fetch('/api/auth/test-email', { method: 'POST' });
+    const data = await res.json();
+    if (res.ok) {
+      showSnackbar('✓ Test email sent — check your inbox.');
+    } else {
+      showSnackbar(data.error || 'Failed to send test email.', 'error');
+    }
+  } catch {
+    showSnackbar('Connection error.', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<span class="material-icons" style="font-size:16px">email</span> Send test email'; }
+  }
+}
+
 async function saveProfileNotifications(enabled) {
   try {
     await fetch('/api/auth/profile', {
@@ -863,6 +966,16 @@ async function saveProfileNotifications(enabled) {
     if (enabled && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
       Notification.requestPermission();
     }
+  } catch {}
+}
+
+async function saveProfileGlobalEmail(enabled) {
+  try {
+    await fetch('/api/auth/profile', {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ globalEmailNotify: enabled }),
+    });
   } catch {}
 }
 
@@ -935,12 +1048,20 @@ function connectSSE() {
         const existingIds = new Set(trackers.map(t => t.id));
         data.trackers.forEach(t => { if (!existingIds.has(t.id)) trackers.unshift(t); });
       }
+      if (data.type === 'update') {
+        // Invalidate cache for newly-changed trackers BEFORE rendering so that
+        // renderTrackers() sees an unloaded cache and triggers _tcFetch immediately.
+        trackers.forEach(t => {
+          if (t.status === 'changed' && prevStatuses[t.id] !== 'changed') {
+            delete _tcCache[t.id];
+          }
+        });
+      }
       renderTrackers();
       updateBadge();
       if (data.type === 'update') {
         trackers.forEach(t => {
           if (t.status === 'changed' && prevStatuses[t.id] !== 'changed') {
-            delete _tcCache[t.id]; // invalidate so fresh history is fetched
             showSnackbar(`🔔 Change detected: ${t.label}`);
             triggerBrowserNotification(t.label, t.url);
           }
@@ -965,10 +1086,12 @@ async function saveEdit(id) {
   const newLabel    = document.getElementById(`edit-label-${id}`).value.trim();
   const newInterval = parseInt(document.getElementById(`edit-interval-${id}`).value);
   const newAi       = document.getElementById(`edit-ai-${id}`).checked;
+  const newEmail    = document.getElementById(`edit-email-${id}`).checked;
   const body = {};
   if (newLabel && newLabel !== t.label) body.label = newLabel;
   if (newInterval && newInterval !== t.interval) body.interval = newInterval;
-  body.aiSummary = newAi;
+  body.aiSummary  = newAi;
+  body.emailNotify = newEmail;
   try {
     const res = await fetch(`/api/trackers/${id}`, {
       method: 'PATCH',
@@ -1116,21 +1239,21 @@ function _tcBuildHTML(t, cache) {
   const toggleTitle = collapsed ? 'Show history' : 'Hide history';
 
   const unreadCount  = cache?.loaded
-    ? cache.items.filter(i => !i.dismissed && !i.locked).length
+    ? cache.items.filter(i => !i.dismissed).length
     : (isNew ? 1 : 0);
   const showUnreadBadge = isNew || unreadCount > 0;
   const badgeLabel      = unreadCount > 1 ? `${unreadCount} unread` : 'UNREAD';
 
   let html = `<div class="tc-header">
     <span class="material-icons" style="font-size:16px;flex-shrink:0;color:var(--on-surface-medium)">history</span>
-    <span class="tc-title">Change history</span>
+    <span class="tc-title">History</span>
     ${showUnreadBadge ? `<span class="tc-unread-badge">${badgeLabel}</span>` : ''}
     ${showUnreadBadge && unreadCount > 0 ? `<button class="btn btn-text tc-mark-all-read-btn" onclick="_tcDismissAll('${t.id}')">Mark all read</button>` : ''}
     <span style="flex:1"></span>
-    <button class="tc-icon-btn" title="${toggleTitle}" onclick="_tcToggleHistory('${t.id}')">
+    <button class="tc-icon-btn" data-tip="${toggleTitle}" onclick="_tcToggleHistory('${t.id}')">
       <span class="material-icons tc-toggle-btn-icon">${toggleIcon}</span>
     </button>
-    <button class="tc-icon-btn tc-icon-btn-delete" title="Delete all history" onclick="_tcDeleteHistory('${t.id}')">
+    <button class="tc-icon-btn tc-icon-btn-delete" data-tip="Delete all history" onclick="_tcDeleteHistory('${t.id}')">
       <span class="material-icons">delete_outline</span>
     </button>
   </div>`;
@@ -1145,7 +1268,7 @@ function _tcBuildHTML(t, cache) {
       const hasSnippet = isNew && t.changeSnippet;
       html += `<div class="tc-entry tc-entry-new">
         <div class="tc-entry-row">
-          <span class="tc-unread-dot" title="Unread"></span>
+          <span class="tc-unread-dot" data-tip="Unread"></span>
           <div class="tc-entry-meta">Just now</div>
           <span style="flex:1"></span>
         </div>
@@ -1166,33 +1289,42 @@ function _tcBuildHTML(t, cache) {
     return html;
   }
 
-  // Cache is loaded — render stacked history entries (newest first)
-  cache.items.forEach((item, idx) => {
-    const entryUnread = !item.dismissed && !item.locked;
-    const hasSnippet  = idx === 0 && t.changeSnippet;
+  // Cache is loaded — render stacked history entries (newest first).
+  // Apply active filter to entries too.
+  const visibleItems = showLockedOnly
+    ? cache.items.filter(i => i.locked)
+    : showChangedOnly
+      ? cache.items.filter(i => !i.dismissed)
+      : cache.items;
+
+  visibleItems.forEach((item, idx) => {
+    const entryUnread = !item.dismissed;
+    const entrySoft   = !!item.soft;
+    const hasSnippet  = !!item.snippet;
     const dateStr     = new Date(item.detectedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-    html += `<div class="tc-entry${entryUnread ? ' tc-entry-unread' : ' tc-entry-read'}${item.locked ? ' tc-entry-locked' : ''}">
+    html += `<div class="tc-entry${entryUnread ? ' tc-entry-unread' : ' tc-entry-read'}${item.locked ? ' tc-entry-locked' : ''}${entrySoft && !item.locked ? ' tc-entry-soft' : ''}">
       <div class="tc-entry-row">
-        ${entryUnread ? `<span class="tc-unread-dot" title="Unread"></span>` : '<span class="tc-read-dot" title="Read"></span>'}
+        ${entryUnread ? `<span class="tc-unread-dot" data-tip="Unread"></span>` : '<span class="tc-read-dot" data-tip="Read"></span>'}
         <div class="tc-entry-meta">${timeAgo(item.detectedAt)} &middot; ${dateStr}</div>
+        ${entrySoft ? `<span class="tc-soft-chip">no sig. change</span>` : ''}
         <span style="flex:1"></span>
-        ${item.locked ? '' : (entryUnread ? `<button class="btn btn-text tc-mark-read-btn" onclick="_tcDismissChange('${item.id}','${t.id}')">Mark read</button>` : '<span class="tc-read-label">Read</span>')}
-        <button class="tc-icon-btn tc-lock-btn${item.locked ? ' tc-lock-btn-active' : ''}" title="${item.locked ? 'Unlock this change' : 'Lock this change'}" onclick="_tcLockChange('${item.id}','${t.id}')">
+        ${entryUnread ? `<button class="btn btn-text tc-mark-read-btn" onclick="_tcDismissChange('${item.id}','${t.id}')">Mark read</button>` : `<span class="tc-read-label">${entrySoft ? 'Read (auto)' : 'Read'}</span>`}
+        <button class="tc-icon-btn tc-lock-btn${item.locked ? ' tc-lock-btn-active' : ''}" data-tip="${item.locked ? 'Unlock this change' : 'Lock this change'}" onclick="_tcLockChange('${item.id}','${t.id}')">
           <span class="material-icons">${item.locked ? 'lock' : 'lock_open'}</span>
         </button>
       </div>
       <div class="diff-summary">${renderSummary(item.summary || '')}</div>
-      ${hasSnippet ? `<button class="btn btn-text" style="padding:3px 10px;font-size:12px;white-space:nowrap" onclick="toggleDiffPanel('${t.id}',this)">Show changes</button>` : ''}
+      ${hasSnippet ? `<button class="btn btn-text" style="padding:3px 10px;font-size:12px;white-space:nowrap" onclick="toggleDiffPanel('${item.id}',this)">Show changes</button>` : ''}
     </div>
-    ${hasSnippet ? `<div class="diff-panel" id="diff-panel-${t.id}">
+    ${hasSnippet ? `<div class="diff-panel" id="diff-panel-${item.id}">
       <div class="diff-panel-inner">
-        <div class="diff-block diff-removed"><div class="diff-block-label">Before</div>${escHtml(t.changeSnippet.removed)}</div>
-        <div class="diff-block diff-added"><div class="diff-block-label">After</div>${escHtml(t.changeSnippet.added)}</div>
+        <div class="diff-block diff-removed"><div class="diff-block-label">Before</div>${escHtml(item.snippet.removed)}</div>
+        <div class="diff-block diff-added"><div class="diff-block-label">After</div>${escHtml(item.snippet.added)}</div>
       </div>
     </div>` : ''}`;
   });
 
-  if (cache.total > cache.items.length) {
+  if (!showChangedOnly && !showLockedOnly && cache.total > cache.items.length) {
     const remaining = Math.min(5, cache.total - cache.items.length);
     html += `<button class="btn btn-text tc-load-more" onclick="_tcLoadMore('${t.id}')">Load ${remaining} more change${remaining !== 1 ? 's' : ''}</button>`;
   }
@@ -1252,7 +1384,7 @@ function _tcLoadMore(trackerId) {
 
 async function _tcDismissAll(trackerId) {
   const cache = _tcCache[trackerId];
-  const unread = cache?.items.filter(i => !i.dismissed && !i.locked) ?? [];
+  const unread = cache?.items.filter(i => !i.dismissed) ?? [];
   // Optimistic update
   unread.forEach(i => { i.dismissed = 1; });
   _tcUpdate(trackerId);
@@ -1355,8 +1487,9 @@ function _tcToggleHistory(id) {
         }, { once: true });
       });
     }
-  } else if (!isCollapsed) {
-    // Body doesn't exist yet (was collapsed on initial render) — full rebuild
+  } else if (isCollapsed) {
+    // Body doesn't exist yet — panel was collapsed when last rendered.
+    // We're expanding now, so do a full rebuild (also triggers _tcFetch if cache gone).
     _tcUpdate(id);
   }
 }
@@ -1428,6 +1561,7 @@ function renderTrackers() {
     if (showChangedOnly && t.status !== 'changed') return false;
     if (showActiveOnly  && !t.active)              return false;
     if (showAIOnly      && t.aiSummary === false)   return false;
+    if (showLockedOnly  && !(t.lockedCount > 0))   return false;
     if (trackerFilter &&
         !(t.label || '').toLowerCase().includes(trackerFilter) &&
         !(t.url   || '').toLowerCase().includes(trackerFilter)) return false;
@@ -1439,7 +1573,7 @@ function renderTrackers() {
   if (countEl) {
     if (trackers.length === 0) {
       countEl.textContent = '';
-    } else if (trackerFilter || showChangedOnly || showActiveOnly || showAIOnly) {
+    } else if (trackerFilter || showChangedOnly || showActiveOnly || showAIOnly || showLockedOnly) {
       countEl.textContent = `${filtered.length} of ${trackers.length} shown`;
     } else {
       countEl.textContent = `${trackers.length} tracker${trackers.length !== 1 ? 's' : ''}`;
@@ -1515,6 +1649,7 @@ function clearAllFilters() {
   showChangedOnly = false;
   showActiveOnly  = false;
   showAIOnly      = false;
+  showLockedOnly  = false;
   const search = document.getElementById('trackerSearch');
   if (search) search.value = '';
   const changedChk = document.getElementById('showChangedOnlyChk');
@@ -1523,6 +1658,8 @@ function clearAllFilters() {
   if (activeChk) activeChk.checked = false;
   const aiChk = document.getElementById('showAIOnlyChk');
   if (aiChk) aiChk.checked = false;
+  const lockedChk = document.getElementById('showLockedOnlyChk');
+  if (lockedChk) lockedChk.checked = false;
   renderTrackers();
 }
 
@@ -1543,6 +1680,11 @@ function setShowActiveOnly(checked) {
 
 function setShowAIOnly(checked) {
   showAIOnly = checked;
+  renderTrackers();
+}
+
+function setShowLockedOnly(checked) {
+  showLockedOnly = checked;
   renderTrackers();
 }
 
@@ -1665,7 +1807,7 @@ function trackerHTML(t) {
 
   return `
     <div class="tracker-main">
-      <span class="drag-handle material-icons" title="Drag to reorder">drag_indicator</span>
+      <span class="drag-handle material-icons" data-tip="Drag to reorder">drag_indicator</span>
       <span class="tracker-status ${statusClass}"></span>
       <div class="tracker-info">
         <div class="tracker-name">${escHtml(t.label)}</div>
@@ -1676,20 +1818,21 @@ function trackerHTML(t) {
         <div class="tracker-interval"><span class="material-icons">schedule</span>${intervalLabel}</div>
         <div class="tracker-last-check">${lastCheck}</div>
         ${timeAgoStr ? `<div class="tracker-time-ago" data-ts="${t.lastCheck}">${timeAgoStr}</div>` : ''}
-        <div title="${t.aiSummary !== false ? 'AI summary enabled' : 'AI summary disabled'}" style="display:flex;align-items:center;gap:3px;font-size:11px;${t.aiSummary !== false ? 'color:var(--primary);opacity:0.75' : 'color:var(--on-surface-medium);opacity:0.45'}">
+        <div data-tip="${t.aiSummary !== false ? 'AI summary enabled' : 'AI summary disabled'}" style="display:flex;align-items:center;gap:3px;font-size:11px;${t.aiSummary !== false ? 'color:var(--primary);opacity:0.75' : 'color:var(--on-surface-medium);opacity:0.45'}">
           <span class="material-icons" style="font-size:13px">${t.aiSummary !== false ? 'auto_awesome' : 'auto_awesome'}</span>AI
         </div>
+        ${t.emailNotify ? `<div data-tip="Email notifications enabled" style="display:flex;align-items:center;gap:3px;font-size:11px;color:var(--primary);opacity:0.75"><span class="material-icons" style="font-size:13px">email</span></div>` : ''}
       </div>
       <div class="tracker-actions">
-        <label class="toggle" title="${t.active ? 'Pause' : 'Resume'} tracker">
+        <label class="toggle" data-tip="${t.active ? 'Pause' : 'Resume'} tracker">
           <input type="checkbox" ${t.active ? 'checked' : ''} onchange="toggleTracker('${t.id}')">
           <span class="toggle-slider"></span>
         </label>
-        <button class="btn-icon tracker-action-icon" onclick="moveToTop('${t.id}')" title="Move to top" ${trackers[0]?.id === t.id ? 'disabled style="opacity:0.25;cursor:default"' : ''}><span class="material-icons">vertical_align_top</span></button>
-        <a class="btn-icon tracker-action-icon material-icons" href="${escHtml(t.url)}" target="_blank" rel="noopener noreferrer" title="Open URL in new tab" style="text-decoration:none">open_in_new</a>
-        <button class="btn-icon tracker-action-icon material-icons" onclick="toggleEdit('${t.id}')" title="Edit">edit</button>
-        <button class="btn-icon tracker-action-icon material-icons" onclick="checkTracker('${t.id}')" title="Check now" ${t.status === 'checking' ? 'disabled' : ''}>refresh</button>
-        <button class="btn-icon tracker-action-icon material-icons" style="color:var(--error)" onclick="removeTracker('${t.id}')" title="Remove">delete_outline</button>
+        <button class="btn-icon tracker-action-icon" onclick="moveToTop('${t.id}')" data-tip="Move to top" ${trackers[0]?.id === t.id ? 'disabled style="opacity:0.25;cursor:default"' : ''}><span class="material-icons">vertical_align_top</span></button>
+        <a class="btn-icon tracker-action-icon material-icons" href="${escHtml(t.url)}" target="_blank" rel="noopener noreferrer" data-tip="Open URL in new tab" style="text-decoration:none">open_in_new</a>
+        <button class="btn-icon tracker-action-icon material-icons" onclick="toggleEdit('${t.id}')" data-tip="Edit">edit</button>
+        <button class="btn-icon tracker-action-icon material-icons" onclick="checkTracker('${t.id}')" data-tip="Check now" ${t.status === 'checking' ? 'disabled' : ''}>refresh</button>
+        <button class="btn-icon tracker-action-icon material-icons" style="color:var(--error)" onclick="removeTracker('${t.id}')" data-tip="Remove">delete_outline</button>
       </div>
     </div>
     ${editingId === t.id ? `
@@ -1717,9 +1860,13 @@ function trackerHTML(t) {
             <option value="604800000"${t.interval===604800000?'selected':''}>7 days</option>
           </select>
         </div>
-        <label class="ai-checkbox-row" title="When disabled, changes are still detected but no AI summary is generated">
+        <label class="ai-checkbox-row" data-tip="When disabled, changes are still detected but no AI summary is generated">
           <input type="checkbox" id="edit-ai-${t.id}" ${t.aiSummary !== false ? 'checked' : ''} />
           AI summary
+        </label>
+        <label class="ai-checkbox-row" data-tip="Send an email notification when this tracker detects a change">
+          <input type="checkbox" id="edit-email-${t.id}" ${t.emailNotify ? 'checked' : ''} />
+          Email on change
         </label>
       </div>
       <button class="btn btn-primary" style="height:36px;padding:0 16px;font-size:13px" onclick="saveEdit('${t.id}')">Save</button>
@@ -2018,8 +2165,9 @@ function closeTrackerOptionsModal(confirmed) {
 }
 
 async function _addSelectedTrackers(selected) {
-  const interval  = parseInt(document.getElementById('toIntervalSelect').value) || 30000;
-  const aiSummary = document.getElementById('toAiSummary').checked;
+  const interval     = parseInt(document.getElementById('toIntervalSelect').value) || 30000;
+  const aiSummary    = document.getElementById('toAiSummary').checked;
+  const emailNotify  = document.getElementById('toEmailNotify').checked;
 
   let added = 0, failed = 0;
 
@@ -2028,7 +2176,7 @@ async function _addSelectedTrackers(selected) {
       const res = await fetch('/api/trackers', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ url: s.url, label: s.label, interval, aiSummary })
+        body:    JSON.stringify({ url: s.url, label: s.label, interval, aiSummary, emailNotify })
       });
       if (res.ok) {
         added++;
