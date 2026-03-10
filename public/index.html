@@ -1106,11 +1106,15 @@ let trackers    = [];
 let editingId   = null;
 let currentUser = null;
 let evtSource   = null;
+let swReg       = null;
 let confirmResolver   = null;
 let confirmKeyHandler = null;
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 async function init() {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').then(r => { swReg = r; }).catch(() => {});
+  }
   try {
     const res = await fetch('/api/auth/me');
     if (res.ok) {
@@ -1484,10 +1488,7 @@ async function saveProfilePassword() {
 
 function sendTestNotification() {
   if (Notification.permission === 'granted') {
-    new Notification('Watchdog: Notifications working!', {
-      body: 'Browser notifications are enabled and working correctly.',
-      icon: '/icon.svg'
-    });
+    showBrowserNotification('Watchdog: Notifications working!', 'Browser notifications are enabled and working correctly.', '/');
   } else if (Notification.permission === 'denied') {
     showSnackbar('Notifications are blocked in your browser settings.', 'error');
   } else {
@@ -1992,13 +1993,18 @@ function updateBadge() {
 }
 
 // ─── NOTIFICATIONS ────────────────────────────────────────────────────────────
+function showBrowserNotification(title, body, url) {
+  if (swReg?.showNotification) {
+    swReg.showNotification(title, { body, icon: '/icon.svg', data: { url } });
+  } else {
+    new Notification(title, { body, icon: '/icon.svg' });
+  }
+}
+
 function triggerBrowserNotification(label, url) {
   if (!currentUser?.notificationsEnabled) return;
   if (Notification.permission === 'granted') {
-    new Notification('Watchdog: Change detected', {
-      body: `${label}\n${url}`,
-      icon: '/icon.svg'
-    });
+    showBrowserNotification('Watchdog: Change detected', `${label}\n${url}`, url);
   } else if (Notification.permission !== 'denied') {
     Notification.requestPermission();
   }
