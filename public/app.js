@@ -451,7 +451,7 @@ function renderAdminSettingsTab(s) {
           </label>
         </div>
 
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding-bottom:16px;border-bottom:1px solid var(--divider)">
           <div style="flex:1">
             <div style="font-size:14px;font-weight:600">Default WatchBot limit</div>
             <div style="font-size:12px;color:var(--on-surface-medium);margin-top:3px">Max WatchBots per user when no per-user override is set. <strong>0</strong> = unlimited.</div>
@@ -460,6 +460,18 @@ function renderAdminSettingsTab(s) {
             <input type="number" id="adminDefaultTrackerLimit" min="0" step="1" value="${s.defaultTrackerLimit}"
               style="width:70px;padding:6px 8px;border:1px solid var(--divider);border-radius:8px;font-size:13px;background:var(--surface);color:var(--on-surface);text-align:right"
               onchange="saveAdminSetting('defaultTrackerLimit', parseInt(this.value) || 0)" />
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px">
+          <div style="flex:1">
+            <div style="font-size:14px;font-weight:600">Change history retention cap</div>
+            <div style="font-size:12px;color:var(--on-surface-medium);margin-top:3px">Max unflagged change entries kept across all trackers. Oldest entries are pruned automatically. Flagged changes are never pruned. Minimum <strong>10</strong>.</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+            <input type="number" id="adminHistoryRetentionCap" min="10" step="10" value="${s.historyRetentionCap}"
+              style="width:70px;padding:6px 8px;border:1px solid var(--divider);border-radius:8px;font-size:13px;background:var(--surface);color:var(--on-surface);text-align:right"
+              onchange="saveAdminSetting('historyRetentionCap', Math.max(10, parseInt(this.value) || 500))" />
           </div>
         </div>
 
@@ -1336,20 +1348,22 @@ async function saveEdit(id) {
 async function addTracker() {
   const url      = document.getElementById('urlInput').value.trim();
   const label    = document.getElementById('labelInput').value.trim();
-  const interval  = parseInt(document.getElementById('intervalSelect').value);
-  const aiSummary = document.getElementById('addAiSummary').checked;
+  const interval     = parseInt(document.getElementById('intervalSelect').value);
+  const aiSummary    = document.getElementById('addAiSummary').checked;
+  const emailNotify  = document.getElementById('addEmailNotify').checked;
   if (!url) { showSnackbar('Please enter a URL.', 'error'); return; }
   try { new URL(url); } catch { showSnackbar('Please enter a valid URL.', 'error'); return; }
   try {
     const res = await fetch('/api/trackers', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, label, interval, aiSummary })
+      body: JSON.stringify({ url, label, interval, aiSummary, emailNotify })
     });
     if (!res.ok) { const d = await res.json(); showSnackbar(d.error || 'Failed to add', 'error'); return; }
     document.getElementById('urlInput').value   = '';
     document.getElementById('labelInput').value = '';
-    document.getElementById('addAiSummary').checked = false;
+    document.getElementById('addAiSummary').checked  = false;
+    document.getElementById('addEmailNotify').checked = false;
   } catch {
     showSnackbar('Connection error', 'error');
   }

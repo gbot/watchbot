@@ -357,11 +357,12 @@ function saveChange(change) {
   `).run({ dismissed: 0, soft: 0, snippet: null, ...change, snippet: snippetJson });
   // Only prune when the unflagged pool actually exceeds the cap — avoids a
   // redundant DELETE subquery scan on every save when well under the limit.
+  const cap = Math.max(parseInt(getSetting('historyRetentionCap', '500') || '500'), 10);
   const { c } = db.prepare('SELECT COUNT(*) as c FROM changes WHERE flagged = 0').get();
-  if (c > 500) {
+  if (c > cap) {
     db.prepare(`
       DELETE FROM changes WHERE flagged = 0 AND id NOT IN (
-        SELECT id FROM changes WHERE flagged = 0 ORDER BY detectedAt DESC LIMIT 500
+        SELECT id FROM changes WHERE flagged = 0 ORDER BY detectedAt DESC LIMIT ${cap}
       )
     `).run();
   }
@@ -1134,15 +1135,16 @@ app.post('/api/auth/test-email', authMiddleware, async (req, res) => {
 // ─── ADMIN ROUTES ─────────────────────────────────────────────────────────────
 app.get('/api/admin/settings', adminMiddleware, (req, res) => {
   res.json({
-    allowRegistration:   getSetting('allowRegistration',   '1') !== '0',
-    aiEnabled:           getSetting('aiEnabled',           '1') !== '0',
-    maintenanceMode:     getSetting('maintenanceMode',     '0') === '1',
-    defaultTrackerLimit: parseInt(getSetting('defaultTrackerLimit', '0') || '0'),
+    allowRegistration:    getSetting('allowRegistration',    '1') !== '0',
+    aiEnabled:            getSetting('aiEnabled',            '1') !== '0',
+    maintenanceMode:      getSetting('maintenanceMode',      '0') === '1',
+    defaultTrackerLimit:  parseInt(getSetting('defaultTrackerLimit',  '0')   || '0'),
+    historyRetentionCap:  parseInt(getSetting('historyRetentionCap',  '500') || '500'),
   });
 });
 
 app.patch('/api/admin/settings', adminMiddleware, (req, res) => {
-  const allowed = ['allowRegistration', 'aiEnabled', 'maintenanceMode', 'defaultTrackerLimit'];
+  const allowed = ['allowRegistration', 'aiEnabled', 'maintenanceMode', 'defaultTrackerLimit', 'historyRetentionCap'];
   for (const key of allowed) {
     if (key in req.body) {
       const val = req.body[key];

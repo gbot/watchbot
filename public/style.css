@@ -1194,11 +1194,14 @@
   }
   .tc-entry:last-child { border-bottom: none; }
   .tc-entry-read { opacity: 0.72; }
+  .tc-entry-read:nth-child(even) { background: #f5f5f5; }
   .tc-entry-unread {
-    background: #fffbf0;
+    background: #fff8e1;
     border-left: 3px solid #f29900;
     padding-left: 17px;
     animation: tc-entry-in 0.2s ease;
+    color: #1a1a1a;
+    font-weight: 500;
   }
   @keyframes tc-entry-in {
     from { opacity: 0; transform: translateX(-4px); }
@@ -1219,7 +1222,7 @@
   }
   .tc-entry-meta {
     font-size: 11px;
-    color: var(--on-surface-light);
+    color: var(--on-surface-medium);
   }
   .tc-mark-read-btn {
     padding: 1px 8px !important;
