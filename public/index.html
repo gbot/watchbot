@@ -32,6 +32,7 @@
 
   body {
     font-family: 'DM Sans', sans-serif;
+    font-size: 15px;
     background: var(--background);
     color: var(--on-surface);
     min-height: 100vh;
@@ -416,6 +417,7 @@
     pointer-events: none;
     transition: opacity 0.2s ease;
   }
+  #editUserOverlay { z-index: 370; }
   .profile-overlay.show {
     opacity: 1;
     pointer-events: auto;
@@ -555,6 +557,19 @@
   }
   .admin-table tr:last-child td { border-bottom: none; }
   .admin-table tr:hover td { background: var(--background); }
+  .btn-group {
+    display: inline-flex;
+    border: 1px solid var(--divider);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .btn-group .btn-icon {
+    border-radius: 0;
+    border-right: 1px solid var(--divider);
+    padding: 5px 8px;
+  }
+  .btn-group .btn-icon:last-child { border-right: none; }
+  .btn-group .btn-icon:hover { background: var(--background); }
   .admin-role-badge {
     font-size: 11px; font-weight: 600;
     padding: 2px 8px; border-radius: 20px;
@@ -604,7 +619,32 @@
 
   body.modal-open { overflow: hidden; }
   body.auth-visible .topbar,
+  body.auth-visible .impersonation-banner,
   body.auth-visible .main { filter: blur(4px); pointer-events: none; user-select: none; }
+
+  /* IMPERSONATION BANNER */
+  .impersonation-banner {
+    background: var(--error);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    padding: 10px 24px;
+    font-size: 13px;
+    font-weight: 500;
+    position: sticky;
+    top: 0;
+    z-index: 500;
+  }
+  .impersonation-banner .btn {
+    background: rgba(255,255,255,0.2);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.4);
+    padding: 4px 12px;
+    font-size: 12px;
+  }
+  .impersonation-banner .btn:hover { background: rgba(255,255,255,0.32); }
 
   /* AUTH OVERLAY */
   .auth-overlay {
@@ -786,6 +826,14 @@
 </head>
 <body>
 
+<div class="impersonation-banner" id="impersonationBanner" style="display:none">
+  <span class="material-icons" style="font-size:18px">manage_accounts</span>
+  <span>Viewing as <strong id="impersonationTarget"></strong> — you are in admin impersonation mode</span>
+  <button class="btn" onclick="stopImpersonating()">
+    <span class="material-icons" style="font-size:16px;vertical-align:middle">logout</span> Return to admin
+  </button>
+</div>
+
 <div class="topbar">
   <div class="topbar-logo">
     <div class="topbar-icon"><span class="material-icons">radar</span></div>
@@ -906,6 +954,10 @@
         <input type="text" id="registerUsername" placeholder="Choose a username (min 3 chars)" autocomplete="username" required />
       </div>
       <div class="field">
+        <label for="registerEmail">Email</label>
+        <input type="email" id="registerEmail" placeholder="your@email.com" autocomplete="email" required />
+      </div>
+      <div class="field">
         <label for="registerPassword">Password</label>
         <input type="password" id="registerPassword" placeholder="Choose a password (min 6 chars)" autocomplete="new-password" required />
       </div>
@@ -933,7 +985,7 @@
     </div>
     <div class="admin-tabs">
       <button class="admin-tab active" data-tab="users"    onclick="switchAdminTab('users')">Users</button>
-      <button class="admin-tab"        data-tab="trackers" onclick="switchAdminTab('trackers')">All Trackers</button>
+      <button class="admin-tab"        data-tab="trackers" onclick="switchAdminTab('trackers')">Trackers</button>
     </div>
     <div class="admin-body">
       <!-- Users tab -->
@@ -943,6 +995,11 @@
           <div class="field" style="flex:1;min-width:120px;gap:4px">
             <label style="font-size:11px;font-weight:600;color:var(--on-surface-medium);text-transform:uppercase;letter-spacing:0.5px">Username</label>
             <input type="text" id="adminNewUsername" placeholder="username" autocomplete="off"
+              style="padding:7px 10px;border:1px solid var(--divider);border-radius:8px;font-size:13px;background:var(--surface);color:var(--on-surface)" />
+          </div>
+          <div class="field" style="flex:1;min-width:160px;gap:4px">
+            <label style="font-size:11px;font-weight:600;color:var(--on-surface-medium);text-transform:uppercase;letter-spacing:0.5px">Email</label>
+            <input type="email" id="adminNewEmail" placeholder="user@example.com" autocomplete="off"
               style="padding:7px 10px;border:1px solid var(--divider);border-radius:8px;font-size:13px;background:var(--surface);color:var(--on-surface)" />
           </div>
           <div class="field" style="flex:1;min-width:120px;gap:4px">
@@ -995,6 +1052,57 @@
           <tbody id="adminTrackersBody"></tbody>
         </table>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT USER MODAL -->
+<div class="profile-overlay" id="editUserOverlay" aria-hidden="true">
+  <div class="profile-dialog" role="dialog" aria-modal="true" aria-labelledby="editUserTitle" style="width:min(480px,100%)">
+    <div class="profile-dialog-header">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div class="profile-avatar"><span class="material-icons">edit</span></div>
+        <div>
+          <h3 id="editUserTitle" style="font-size:18px;font-weight:500;letter-spacing:-0.1px">Edit user</h3>
+          <div style="font-size:13px;color:var(--on-surface-medium)" id="editUserSubtitle"></div>
+        </div>
+      </div>
+      <button class="btn-icon" onclick="closeEditUser()" aria-label="Close">
+        <span class="material-icons" style="font-size:20px">close</span>
+      </button>
+    </div>
+
+    <div class="profile-section">
+      <div class="profile-section-title">Email address</div>
+      <input type="email" id="editUserEmail" placeholder="user@example.com" autocomplete="off"
+        style="padding:9px 12px;border:1px solid var(--divider);border-radius:10px;font-size:14px;background:var(--surface);color:var(--on-surface)" />
+    </div>
+
+    <div class="profile-section">
+      <div class="profile-section-title">Role</div>
+      <select id="editUserRole"
+        style="padding:9px 12px;border:1px solid var(--divider);border-radius:10px;font-size:14px;background:var(--surface);color:var(--on-surface)">
+        <option value="user">User</option>
+        <option value="superadmin">Super Admin</option>
+      </select>
+    </div>
+
+    <div class="profile-section">
+      <div class="profile-section-title">Tracker limit</div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <input type="number" id="editUserLimit" min="0" placeholder="Unlimited"
+          style="width:120px;padding:9px 12px;border:1px solid var(--divider);border-radius:10px;font-size:14px;background:var(--surface);color:var(--on-surface)" />
+        <span style="font-size:13px;color:var(--on-surface-medium)">Leave blank for no limit</span>
+      </div>
+    </div>
+
+    <p class="profile-msg" id="editUserMsg" style="margin:0"></p>
+
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn" onclick="closeEditUser()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveEditUser()">
+        <span class="material-icons" style="font-size:16px">save</span> Save changes
+      </button>
     </div>
   </div>
 </div>
@@ -1161,7 +1269,15 @@ function showApp() {
   document.getElementById('userDisplay').textContent = currentUser.username;
   document.getElementById('userArea').style.display  = 'flex';
   const adminBtn = document.getElementById('adminPanelBtn');
-  adminBtn.style.display = currentUser.role === 'superadmin' ? 'flex' : 'none';
+  const banner   = document.getElementById('impersonationBanner');
+  if (currentUser.impersonatedBy) {
+    document.getElementById('impersonationTarget').textContent = currentUser.username;
+    banner.style.display = 'flex';
+    adminBtn.style.display = 'none'; // hide admin button while impersonating
+  } else {
+    banner.style.display = 'none';
+    adminBtn.style.display = currentUser.role === 'superadmin' ? 'flex' : 'none';
+  }
   if (currentUser.notificationsEnabled && Notification.permission === 'default') {
     Notification.requestPermission();
   }
@@ -1192,6 +1308,7 @@ async function handleLogin(e) {
 async function handleRegister(e) {
   e.preventDefault();
   const username = document.getElementById('registerUsername').value.trim();
+  const email    = document.getElementById('registerEmail').value.trim();
   const password = document.getElementById('registerPassword').value;
   const confirm  = document.getElementById('registerConfirm').value;
   const errorEl  = document.getElementById('authError');
@@ -1201,7 +1318,7 @@ async function handleRegister(e) {
     const res  = await fetch('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password })
+      body: JSON.stringify({ username, email, password })
     });
     const data = await res.json();
     if (!res.ok) { errorEl.textContent = data.error || 'Registration failed'; return; }
@@ -1221,6 +1338,7 @@ async function handleLogout() {
   renderTrackers();
   updateBadge();
   document.getElementById('userArea').style.display = 'none';
+  document.getElementById('impersonationBanner').style.display = 'none';
   showAuthOverlay('login');
 }
 
@@ -1274,7 +1392,18 @@ async function loadAdminTab(tab) {
           <span class="toggle-track"></span>
         </label>`}</td>
         <td style="color:var(--on-surface-medium);font-size:12px">${new Date(u.createdAt).toLocaleDateString()}</td>
-        <td>${u.id === currentUser.id ? '' : `<button class="btn-icon" style="color:var(--error)" title="Delete user" onclick="adminDeleteUser('${u.id}','${escHtml(u.username)}')"><span class="material-icons" style="font-size:18px">person_remove</span></button>`}</td>
+        <td>${u.id === currentUser.id ? '' : `
+          <div class="btn-group">
+            <button class="btn-icon" style="color:var(--on-surface-medium)" title="Edit user" onclick="openEditUser('${u.id}','${escHtml(u.username)}','${escHtml(u.email||'')}','${u.role}','${u.trackerLimit??''}')">
+              <span class="material-icons" style="font-size:18px">edit</span>
+            </button>
+            <button class="btn-icon" style="color:var(--primary)" title="Impersonate user" onclick="adminImpersonate('${u.id}','${escHtml(u.username)}')">
+              <span class="material-icons" style="font-size:18px">manage_accounts</span>
+            </button>
+            <button class="btn-icon" style="color:var(--error)" title="Delete user" onclick="adminDeleteUser('${u.id}','${escHtml(u.username)}')">
+              <span class="material-icons" style="font-size:18px">person_remove</span>
+            </button>
+          </div>`}</td>
       </tr>`).join('');
   } else {
     const res  = await fetch('/api/admin/trackers');
@@ -1300,14 +1429,15 @@ async function loadAdminTab(tab) {
 
 async function adminAddUser() {
   const username = document.getElementById('adminNewUsername').value.trim();
+  const email    = document.getElementById('adminNewEmail').value.trim();
   const password = document.getElementById('adminNewPassword').value;
   const role     = document.getElementById('adminNewRole').value;
   const msgEl    = document.getElementById('adminAddUserMsg');
   msgEl.textContent = '';
   msgEl.className   = 'profile-msg';
 
-  if (!username || !password) {
-    msgEl.textContent = 'Username and password are required.';
+  if (!username || !email || !password) {
+    msgEl.textContent = 'Username, email, and password are required.';
     msgEl.classList.add('error');
     return;
   }
@@ -1315,7 +1445,7 @@ async function adminAddUser() {
   const res  = await fetch('/api/admin/users', {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ username, password, role }),
+    body:    JSON.stringify({ username, email, password, role }),
   });
   const data = await res.json();
   if (!res.ok) {
@@ -1325,6 +1455,7 @@ async function adminAddUser() {
     msgEl.textContent = `User "${data.username}" created.`;
     msgEl.classList.add('success');
     document.getElementById('adminNewUsername').value = '';
+    document.getElementById('adminNewEmail').value = '';
     document.getElementById('adminNewPassword').value = '';
     document.getElementById('adminNewRole').value = 'user';
     loadAdminTab('users');
@@ -1337,6 +1468,87 @@ async function adminDeleteUser(id, username) {
   const res = await fetch(`/api/admin/users/${id}`, { method: 'DELETE' });
   if (res.ok) { showSnackbar(`User ${username} deleted.`); loadAdminTab('users'); }
   else { const d = await res.json(); showSnackbar(d.error || 'Delete failed', 'error'); }
+}
+
+async function adminImpersonate(id, username) {
+  const res = await fetch(`/api/admin/impersonate/${id}`, { method: 'POST' });
+  const data = await res.json();
+  if (!res.ok) { showSnackbar(data.error || 'Failed to impersonate', 'error'); return; }
+  currentUser = data;
+  closeAdminPanel();
+  if (evtSource) { evtSource.close(); evtSource = null; }
+  trackers = [];
+  renderTrackers();
+  showApp();
+}
+
+async function stopImpersonating() {
+  const res = await fetch('/api/admin/stop-impersonate', { method: 'POST' });
+  const data = await res.json();
+  if (!res.ok) { showSnackbar(data.error || 'Failed to restore session', 'error'); return; }
+  currentUser = data;
+  if (evtSource) { evtSource.close(); evtSource = null; }
+  trackers = [];
+  renderTrackers();
+  showApp();
+}
+
+// ─── EDIT USER ───────────────────────────────────────────────────────────────
+let editUserId = null;
+
+function openEditUser(id, username, email, role, limit) {
+  editUserId = id;
+  document.getElementById('editUserSubtitle').textContent = username;
+  document.getElementById('editUserEmail').value = email;
+  document.getElementById('editUserRole').value = role;
+  document.getElementById('editUserLimit').value = limit;
+  document.getElementById('editUserMsg').textContent = '';
+  document.getElementById('editUserMsg').className = 'profile-msg';
+  const overlay = document.getElementById('editUserOverlay');
+  overlay.classList.add('show');
+  overlay.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('modal-open');
+  document.getElementById('editUserEmail').focus();
+}
+
+function closeEditUser() {
+  const overlay = document.getElementById('editUserOverlay');
+  overlay.classList.remove('show');
+  overlay.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('modal-open');
+  editUserId = null;
+}
+
+async function saveEditUser() {
+  if (!editUserId) return;
+  const email = document.getElementById('editUserEmail').value.trim();
+  const role  = document.getElementById('editUserRole').value;
+  const limitRaw = document.getElementById('editUserLimit').value;
+  const trackerLimit = limitRaw === '' ? null : parseInt(limitRaw);
+  const msgEl = document.getElementById('editUserMsg');
+  msgEl.textContent = '';
+  msgEl.className = 'profile-msg';
+
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    msgEl.textContent = 'Please enter a valid email address.';
+    msgEl.classList.add('error');
+    return;
+  }
+
+  const res = await fetch(`/api/admin/users/${editUserId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: email || null, role, trackerLimit }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    msgEl.textContent = data.error || 'Failed to save changes.';
+    msgEl.classList.add('error');
+  } else {
+    showSnackbar('User updated.');
+    closeEditUser();
+    loadAdminTab('users');
+  }
 }
 
 async function adminToggleDisabled(id, disable) {
@@ -2098,6 +2310,20 @@ function closeConfirmDialog(confirmed) {
     resolve(confirmed);
   }
 }
+
+// ─── GLOBAL ESCAPE KEY ────────────────────────────────────────────────────────
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (document.getElementById('editUserOverlay')?.classList.contains('show')) {
+    closeEditUser(); return;
+  }
+  if (document.getElementById('adminOverlay')?.classList.contains('show')) {
+    closeAdminPanel(); return;
+  }
+  if (document.getElementById('profileOverlay')?.classList.contains('show')) {
+    closeProfile(); return;
+  }
+});
 
 // ─── BOOT ─────────────────────────────────────────────────────────────────────
 init();
