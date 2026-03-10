@@ -1558,7 +1558,7 @@ function _tcBuildHTML(t, cache) {
     const entrySoft   = !!item.soft;
     const hasSnippet  = !!item.snippet;
     const dateStr     = new Date(item.detectedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-    html += `<div class="tc-entry${entryUnread ? ' tc-entry-unread' : ' tc-entry-read'}${item.flagged ? ' tc-entry-flagged' : ''}${entrySoft && !item.flagged ? ' tc-entry-soft' : ''}">
+    html += `<div class="tc-entry${entryUnread ? ' tc-entry-unread' : ' tc-entry-read'}${item.flagged ? ' tc-entry-flagged' : ''}${entrySoft && !item.flagged ? ' tc-entry-soft' : ''}" data-change-id="${item.id}">
       <div class="tc-entry-row">
         ${entryUnread ? `<span class="tc-unread-dot" data-tip="Unread"></span>` : '<span class="tc-read-dot" data-tip="Read"></span>'}
         <div class="tc-entry-meta">${timeAgo(item.detectedAt)} &middot; ${dateStr}</div>
@@ -1673,20 +1673,50 @@ async function _tcFlagChange(changeId, trackerId) {
   const item  = cache?.items.find(i => i.id === changeId);
   if (!item) return;
   const wasFlagged = !!item.flagged;
-  // Optimistic update
-  item.flagged = wasFlagged ? 0 : 1;
-  _tcUpdate(trackerId);
+  const newFlagged = !wasFlagged;
+  // If a flag-based filter is active, toggling visibility requires a full rebuild.
+  // Otherwise, patch the DOM directly to avoid any scroll jump.
+  const filterActive = _tcFlagFilter.has(trackerId) || showFlaggedOnly;
+  item.flagged = newFlagged ? 1 : 0;
+  if (filterActive) {
+    _tcUpdate(trackerId);
+  } else {
+    _tcPatchFlagDOM(trackerId, changeId, item);
+  }
   try {
     const res = await fetch(`/api/changes/${changeId}/flag`, { method: 'POST' });
     if (!res.ok) throw new Error();
     const { flagged } = await res.json();
     item.flagged = flagged ? 1 : 0;
-    _tcUpdate(trackerId);
+    // Only rebuild if server returned something different from our optimistic value
+    if ((!!flagged) !== newFlagged) {
+      if (filterActive) _tcUpdate(trackerId);
+      else _tcPatchFlagDOM(trackerId, changeId, item);
+    }
   } catch {
-    // Revert optimistic update
     item.flagged = wasFlagged ? 1 : 0;
-    _tcUpdate(trackerId);
+    if (filterActive) _tcUpdate(trackerId);
+    else _tcPatchFlagDOM(trackerId, changeId, item);
     showSnackbar('Failed to update flag', 'error');
+  }
+}
+
+function _tcPatchFlagDOM(trackerId, changeId, item) {
+  const container = document.getElementById(`tc-history-${trackerId}`);
+  if (!container) return;
+  const entry = container.querySelector(`.tc-entry[data-change-id="${changeId}"]`);
+  if (!entry) { _tcUpdate(trackerId); return; }
+  const flagged = !!item.flagged;
+  entry.classList.toggle('tc-entry-flagged', flagged);
+  // Only touch tc-entry-soft when not flagged
+  if (!flagged && item.soft) entry.classList.add('tc-entry-soft');
+  if (flagged) entry.classList.remove('tc-entry-soft');
+  const btn = entry.querySelector('.tc-flag-btn');
+  if (btn) {
+    btn.classList.toggle('tc-flag-btn-active', flagged);
+    btn.setAttribute('data-tip', flagged ? 'Unflag this change' : 'Flag this change');
+    const icon = btn.querySelector('.material-icons');
+    if (icon) icon.textContent = flagged ? 'flag' : 'outlined_flag';
   }
 }
 
