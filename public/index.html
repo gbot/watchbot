@@ -1106,14 +1106,13 @@ let trackers    = [];
 let editingId   = null;
 let currentUser = null;
 let evtSource   = null;
-let swReg       = null;
 let confirmResolver   = null;
 let confirmKeyHandler = null;
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 async function init() {
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').then(r => { swReg = r; }).catch(() => {});
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
   }
   try {
     const res = await fetch('/api/auth/me');
@@ -1993,12 +1992,15 @@ function updateBadge() {
 }
 
 // ─── NOTIFICATIONS ────────────────────────────────────────────────────────────
-function showBrowserNotification(title, body, url) {
-  if (swReg?.showNotification) {
-    swReg.showNotification(title, { body, icon: '/icon.svg', data: { url } });
-  } else {
-    new Notification(title, { body, icon: '/icon.svg' });
+async function showBrowserNotification(title, body, url) {
+  if ('serviceWorker' in navigator && Notification.permission === 'granted') {
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      await reg.showNotification(title, { body, data: { url } });
+      return;
+    } catch {}
   }
+  try { new Notification(title, { body, icon: '/icon.svg' }); } catch {}
 }
 
 function triggerBrowserNotification(label, url) {
