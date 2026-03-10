@@ -1631,7 +1631,7 @@ function _tcUpdate(trackerId, scrollToBottom = false) {
     // Use rAF so the restore runs after the browser handles focus-loss scrolling
     requestAnimationFrame(() => {
       if (scrollToBottom) {
-        newBody.scrollTo({ top: newBody.scrollHeight, behavior: 'smooth' });
+        newBody.scrollTop = newBody.scrollHeight;
       } else if (savedScroll > 0) {
         newBody.scrollTop = savedScroll;
       }
