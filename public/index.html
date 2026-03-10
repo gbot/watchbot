@@ -505,11 +505,18 @@
       <div class="profile-section-title">Changes panel</div>
       <label style="font-size:14px;color:var(--on-surface);display:flex;align-items:center;gap:10px">
         Max height
-        <input type="number" id="profileChangesMaxHeight" min="100" max="2000" step="50"
-          style="width:90px" onchange="saveChangesMaxHeight(+this.value)" />
-        <span style="font-size:13px;color:var(--on-surface-medium)">px</span>
+        <select id="profileChangesMaxHeight" onchange="saveChangesMaxHeight(+this.value)">
+          <option value="0">No limit</option>
+          <option value="300">300 px</option>
+          <option value="400">400 px</option>
+          <option value="500">500 px</option>
+          <option value="600">600 px</option>
+          <option value="800">800 px</option>
+          <option value="1000">1000 px</option>
+          <option value="1200">1200 px</option>
+        </select>
       </label>
-      <p style="font-size:12px;color:var(--on-surface-medium);margin:4px 0 0">Limit change history height and make it scrollable. Set to 0 for no limit.</p>
+      <p style="font-size:12px;color:var(--on-surface-medium);margin:4px 0 0">Limit change history height and make it scrollable. &ldquo;No limit&rdquo; shows all entries without scrolling.</p>
     </div>
 
     <div class="profile-divider"></div>
