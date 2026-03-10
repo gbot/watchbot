@@ -1187,7 +1187,7 @@
   }
   .tc-entry {
     padding: 10px 20px;
-    border-bottom: 1px solid #f0f0f0;
+    border-bottom: 1px solid #e4e4e4;
     font-size: 13px;
     color: #3c3c3c;
     transition: opacity 0.3s ease, background 0.3s ease;
@@ -1276,6 +1276,7 @@
     border-left: 3px solid #7c4dff !important;
     padding-left: 17px;
     opacity: 1 !important;
+    border-bottom-color: #d8cffa !important;
   }
   .tc-flag-btn { color: var(--on-surface-medium); }
   .tc-flag-btn-active { color: #7c4dff; }
