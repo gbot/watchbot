@@ -1240,7 +1240,6 @@
   .tc-body {
     max-height: var(--changes-max-height, none);
     overflow-y: auto;
-    scroll-behavior: smooth;
     scrollbar-width: thin;
     scrollbar-color: #d0d0d0 transparent;
     /* Scroll shadow indicators — fade top/bottom when content is clipped */
