@@ -1,6 +1,6 @@
-# Watchdog 🐕
+# Watchbot 🐕
 
-A self-hosted web change tracker. Add URLs, set a polling interval, and Watchdog will notify you whenever the content changes — with an AI-generated summary of what changed.
+A self-hosted web change tracker. Add URLs, set a polling interval, and Watchbot will notify you whenever the content changes — with an AI-generated summary of what changed.
 
 ---
 
@@ -43,8 +43,8 @@ A self-hosted web change tracker. Add URLs, set a polling interval, and Watchdog
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/gbot/watchdog.git
-cd watchdog
+git clone https://github.com/gbot/watchbot.git
+cd watchbot
 npm install
 ```
 
@@ -90,7 +90,7 @@ On first start, a **super-admin account** is automatically created. Check the se
 ## Project Structure
 
 ```
-watchdog/
+watchbot/
 ├── server/
 │   └── index.js        # Express server, all API routes, scheduler
 ├── public/

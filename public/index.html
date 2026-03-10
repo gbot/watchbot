@@ -3,826 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Watchdog — HTTP Change Tracker</title>
+<title>Watchbot — HTTP Change Tracker</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-<style>
-  :root {
-    --primary: #1a73e8;
-    --primary-dark: #1557b0;
-    --primary-light: #e8f0fe;
-    --secondary: #00897b;
-    --surface: #ffffff;
-    --background: #f1f3f4;
-    --on-surface: #202124;
-    --on-surface-medium: #5f6368;
-    --on-surface-light: #9aa0a6;
-    --divider: #e0e0e0;
-    --error: #d93025;
-    --warning: #f9ab00;
-    --success: #1e8e3e;
-    --elevation-1: 0 1px 2px rgba(60,64,67,.3), 0 1px 3px 1px rgba(60,64,67,.15);
-    --elevation-2: 0 1px 2px rgba(60,64,67,.3), 0 2px 6px 2px rgba(60,64,67,.15);
-    --elevation-3: 0 1px 3px rgba(60,64,67,.3), 0 4px 8px 3px rgba(60,64,67,.15);
-    --radius: 12px;
-    --radius-sm: 8px;
-  }
-
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-
-  body {
-    font-family: 'DM Sans', sans-serif;
-    font-size: 15px;
-    background: var(--background);
-    color: var(--on-surface);
-    min-height: 100vh;
-  }
-
-  /* TOP BAR */
-  .topbar {
-    background: var(--surface);
-    box-shadow: var(--elevation-1);
-    position: sticky; top: 0; z-index: 100;
-    display: flex; align-items: center;
-    padding: 0 24px;
-    height: 64px;
-    gap: 16px;
-  }
-  .topbar-logo {
-    display: flex; align-items: center; gap: 10px;
-  }
-  .topbar-icon {
-    width: 36px; height: 36px;
-    background: var(--primary);
-    border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-    color: white;
-    font-size: 20px;
-  }
-  .topbar h1 { font-size: 20px; font-weight: 500; letter-spacing: -0.3px; }
-  .topbar h1 span { color: var(--primary); }
-  .topbar-spacer { flex: 1; }
-  .topbar-badge {
-    background: var(--primary-light);
-    color: var(--primary);
-    font-size: 12px;
-    font-weight: 600;
-    padding: 4px 10px;
-    border-radius: 20px;
-  }
-
-  /* LAYOUT */
-  .main {
-    max-width: 1280px;
-    margin: 0 auto;
-    padding: 32px 24px 100px;
-  }
-
-  /* CARDS */
-  .card {
-    background: var(--surface);
-    border-radius: var(--radius);
-    box-shadow: var(--elevation-1);
-    overflow: hidden;
-    transition: box-shadow 0.2s;
-  }
-  .card:hover { box-shadow: var(--elevation-2); }
-
-  /* ADD FORM */
-  .add-card { margin-bottom: 24px; }
-  .add-card-header {
-    padding: 20px 24px 0;
-    display: flex; align-items: center; gap: 10px;
-    font-size: 14px; font-weight: 500;
-    color: var(--on-surface-medium);
-    text-transform: uppercase; letter-spacing: 0.8px;
-  }
-  .add-card-header .material-icons { font-size: 18px; color: var(--primary); }
-  .add-form {
-    padding: 16px 24px 24px;
-    display: grid;
-    grid-template-columns: 1fr auto auto auto;
-    gap: 12px;
-    align-items: end;
-  }
-  .field { display: flex; flex-direction: column; gap: 6px; }
-  .field label {
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--on-surface-medium);
-    letter-spacing: 0.3px;
-  }
-  .field input, .field select {
-    font-family: 'DM Sans', sans-serif;
-    font-size: 14px;
-    padding: 10px 14px;
-    border: 1.5px solid var(--divider);
-    border-radius: var(--radius-sm);
-    background: var(--surface);
-    color: var(--on-surface);
-    outline: none;
-    transition: border-color 0.15s, box-shadow 0.15s;
-    min-width: 0;
-  }
-  .field input:focus, .field select:focus {
-    border-color: var(--primary);
-    box-shadow: 0 0 0 3px rgba(26,115,232,0.12);
-  }
-  .field input::placeholder { color: var(--on-surface-light); }
-
-  /* BUTTONS */
-  .btn {
-    font-family: 'DM Sans', sans-serif;
-    font-size: 14px; font-weight: 500;
-    letter-spacing: 0.25px;
-    padding: 10px 20px;
-    border: none; border-radius: var(--radius-sm);
-    cursor: pointer;
-    display: inline-flex; align-items: center; gap: 6px;
-    transition: background 0.15s, box-shadow 0.15s, transform 0.1s;
-    white-space: nowrap;
-  }
-  .btn:active { transform: scale(0.97); }
-  .btn-primary {
-    background: var(--primary);
-    color: white;
-    box-shadow: var(--elevation-1);
-  }
-  .btn-primary:hover { background: var(--primary-dark); box-shadow: var(--elevation-2); }
-  .btn-danger {
-    background: var(--error);
-    color: white;
-    box-shadow: var(--elevation-1);
-  }
-  .btn-danger:hover { background: #b3261e; box-shadow: var(--elevation-2); }
-  .btn-text {
-    background: transparent; color: var(--primary);
-    padding: 8px 12px;
-  }
-  .btn-text:hover { background: var(--primary-light); }
-  .btn-icon {
-    background: transparent; border: none;
-    color: var(--on-surface-medium);
-    padding: 6px; border-radius: 50%;
-    cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-    transition: background 0.15s, color 0.15s;
-    font-size: 20px;
-  }
-  .btn-icon:hover { background: var(--background); color: var(--on-surface); }
-
-  /* SECTION HEADER */
-  .section-header {
-    display: flex; align-items: center; gap: 10px;
-    margin-bottom: 16px;
-  }
-  .section-title {
-    font-size: 14px; font-weight: 500;
-    color: var(--on-surface-medium);
-    text-transform: uppercase; letter-spacing: 0.8px;
-    flex: 1;
-  }
-
-  /* TRACKER ITEMS */
-  .tracker-list { display: flex; flex-direction: column; gap: 12px; }
-
-  .tracker-item {
-    background: var(--surface);
-    border-radius: var(--radius);
-    box-shadow: var(--elevation-1);
-    overflow: hidden;
-    transition: box-shadow 0.2s, opacity 0.15s, transform 0.15s;
-  }
-  .tracker-item:hover { box-shadow: var(--elevation-2); }
-  .tracker-item.drag-dragging {
-    opacity: 0.45;
-    box-shadow: none;
-  }
-  .tracker-item.drag-over {
-    box-shadow: 0 0 0 2px var(--primary), var(--elevation-2);
-  }
-
-  .drag-handle {
-    color: var(--on-surface-light);
-    cursor: grab;
-    display: flex;
-    align-items: center;
-    padding: 0 2px 0 0;
-    flex-shrink: 0;
-    touch-action: none;
-    user-select: none;
-    font-size: 20px;
-  }
-  .drag-handle:active { cursor: grabbing; }
-
-  .tracker-main {
-    padding: 16px 20px;
-    display: flex; align-items: center; gap: 16px;
-    transition: opacity 0.2s, filter 0.2s;
-  }
-
-  .tracker-item.tracker-item-paused .tracker-main {
-    opacity: 0.64;
-    filter: saturate(0.75);
-  }
-
-  .tracker-status {
-    width: 10px; height: 10px; border-radius: 50%;
-    flex-shrink: 0;
-  }
-  .status-ok { background: var(--success); box-shadow: 0 0 0 3px rgba(30,142,62,0.15); }
-  .status-changed { background: var(--warning); box-shadow: 0 0 0 3px rgba(249,171,0,0.2); animation: pulse 2s infinite; }
-  .status-error { background: var(--error); box-shadow: 0 0 0 3px rgba(217,48,37,0.15); }
-  .status-pending { background: var(--on-surface-light); }
-
-  @keyframes pulse {
-    0%, 100% { transform: scale(1); opacity: 1; }
-    50% { transform: scale(1.3); opacity: 0.7; }
-  }
-
-  .tracker-info { flex: 1; min-width: 0; }
-  .tracker-name {
-    font-size: 14px; font-weight: 500;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    margin-bottom: 2px;
-  }
-  .tracker-url {
-    font-family: 'DM Mono', monospace;
-    font-size: 11px; color: var(--on-surface-medium);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
-
-  .tracker-meta {
-    display: flex; flex-direction: column; align-items: flex-end; gap: 4px;
-    flex-shrink: 0;
-  }
-  .tracker-interval {
-    font-size: 12px; color: var(--on-surface-medium);
-    display: flex; align-items: center; gap: 4px;
-  }
-  .tracker-interval .material-icons { font-size: 14px; }
-  .tracker-last-check {
-    font-size: 11px; color: var(--on-surface-light);
-  }
-  .tracker-time-ago {
-    font-size: 10px; color: var(--on-surface-light); opacity: 0.7;
-  }
-
-  .tracker-actions { display: flex; align-items: center; gap: 4px; }
-
-  .tracker-change-banner {
-    background: #fef7e0;
-    border-top: 1px solid #fce8b2;
-    padding: 12px 20px;
-    display: flex; align-items: flex-start; gap: 10px;
-    font-size: 13px; color: #5f3b00;
-  }
-  .tracker-change-banner .material-icons { font-size: 16px; color: var(--warning); flex-shrink: 0; margin-top: 1px; }
-
-  .diff-summary { flex: 1; line-height: 1.5; }
-  .diff-summary strong { font-weight: 600; }
-
-  .diff-panel {
-    max-height: 0;
-    overflow: hidden;
-    transition: max-height 0.3s ease;
-  }
-  .diff-panel.open { max-height: 500px; }
-  .diff-panel-inner {
-    padding: 12px 20px 16px;
-    display: flex; flex-direction: column; gap: 8px;
-    background: #f8f9fa;
-    border-top: 1px solid #e8eaed;
-  }
-  .diff-block { border-radius: 4px; padding: 8px 10px; font-size: 12px; line-height: 1.6; word-break: break-word; }
-  .diff-block-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 4px; opacity: 0.65; }
-  .diff-removed { background: #fce8e6; color: #7f1d1d; border-left: 3px solid #f28b82; }
-  .diff-added   { background: #e6f4ea; color: #1b5e20; border-left: 3px solid #81c995; }
-
-  /* EMPTY STATE */
-  .empty-state {
-    text-align: center;
-    padding: 60px 24px;
-    color: var(--on-surface-medium);
-  }
-  .empty-state .material-icons { font-size: 48px; color: var(--on-surface-light); margin-bottom: 16px; }
-  .empty-state h3 { font-size: 16px; font-weight: 500; margin-bottom: 8px; }
-  .empty-state p { font-size: 14px; }
-
-  /* NOTIFICATION BANNER */
-  .notification-bar {
-    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
-    background: #323232;
-    color: white;
-    padding: 14px 20px;
-    border-radius: var(--radius-sm);
-    box-shadow: var(--elevation-3);
-    font-size: 14px;
-    display: flex; align-items: center; gap: 12px;
-    z-index: 200;
-    min-width: 300px;
-    max-width: 480px;
-    animation: slideUp 0.25s ease;
-    opacity: 0; pointer-events: none;
-    transition: opacity 0.2s;
-  }
-  .notification-bar.show { opacity: 1; pointer-events: auto; }
-  .notification-bar .material-icons { font-size: 18px; color: #8ab4f8; }
-  .notification-bar button {
-    margin-left: auto; background: none; border: none;
-    color: #8ab4f8; cursor: pointer; font-family: 'DM Sans', sans-serif;
-    font-size: 13px; font-weight: 500; padding: 0;
-  }
-  @keyframes slideUp {
-    from { transform: translateX(-50%) translateY(12px); }
-    to   { transform: translateX(-50%) translateY(0); }
-  }
-
-  /* CONFIRM MODAL */
-  .confirm-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(32,33,36,0.38);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 24px;
-    z-index: 500;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.18s ease;
-  }
-  .confirm-overlay.show {
-    opacity: 1;
-    pointer-events: auto;
-  }
-  .confirm-dialog {
-    width: min(420px, 100%);
-    background: var(--surface);
-    border-radius: 16px;
-    box-shadow: var(--elevation-3);
-    padding: 20px 20px 16px;
-    transform: translateY(10px) scale(0.98);
-    transition: transform 0.2s ease;
-  }
-  .confirm-overlay.show .confirm-dialog {
-    transform: translateY(0) scale(1);
-  }
-  .confirm-header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 10px;
-  }
-  .confirm-icon {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    background: #fce8e6;
-    color: var(--error);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-  }
-  .confirm-icon .material-icons { font-size: 18px; }
-  .confirm-title {
-    font-size: 18px;
-    font-weight: 500;
-    letter-spacing: -0.1px;
-  }
-  .confirm-message {
-    font-size: 14px;
-    color: var(--on-surface-medium);
-    line-height: 1.45;
-    margin-bottom: 18px;
-  }
-  .confirm-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-  }
-
-  /* PROFILE OVERLAY */
-  .profile-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(32,33,36,0.52);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 24px;
-    z-index: 350;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.2s ease;
-  }
-  #editUserOverlay { z-index: 370; }
-  .profile-overlay.show {
-    opacity: 1;
-    pointer-events: auto;
-  }
-  .profile-dialog {
-    width: min(520px, 100%);
-    background: var(--surface);
-    border-radius: 20px;
-    box-shadow: var(--elevation-3);
-    padding: 20px 24px 28px;
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-    max-height: 90vh;
-    overflow-y: auto;
-    transform: translateY(8px) scale(0.98);
-    transition: transform 0.2s ease;
-  }
-  .profile-overlay.show .profile-dialog {
-    transform: translateY(0) scale(1);
-  }
-  .profile-dialog-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  .profile-avatar {
-    width: 44px; height: 44px;
-    border-radius: 50%;
-    background: var(--primary-light);
-    color: var(--primary);
-    display: flex; align-items: center; justify-content: center;
-    flex-shrink: 0;
-  }
-  .profile-avatar .material-icons { font-size: 24px; }
-  .profile-section {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-  .profile-section-title {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--on-surface-medium);
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
-  }
-  .profile-divider { border-top: 1px solid var(--divider); }
-  .profile-msg {
-    font-size: 13px;
-    min-height: 16px;
-    margin: -4px 0;
-  }
-  .profile-msg.success { color: var(--success); }
-  .profile-msg.error   { color: var(--error); }
-
-  /* ADMIN PANEL */
-  .admin-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(32,33,36,0.52);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 24px;
-    z-index: 360;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.2s ease;
-  }
-  .admin-overlay.show { opacity: 1; pointer-events: auto; }
-  .admin-dialog {
-    width: min(1100px, 100%);
-    max-height: 88vh;
-    background: var(--surface);
-    border-radius: 20px;
-    box-shadow: var(--elevation-3);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    transform: translateY(8px) scale(0.98);
-    transition: transform 0.2s ease;
-  }
-  .admin-overlay.show .admin-dialog { transform: translateY(0) scale(1); }
-  .admin-dialog-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 20px 24px 16px;
-    border-bottom: 1px solid var(--divider);
-    flex-shrink: 0;
-  }
-  .admin-dialog-header h3 { font-size: 18px; font-weight: 500; }
-  .admin-badge {
-    font-size: 11px; font-weight: 700;
-    background: #fce8e6; color: var(--error);
-    border-radius: 20px; padding: 2px 8px;
-    letter-spacing: 0.4px; text-transform: uppercase;
-  }
-  .admin-tabs {
-    display: flex;
-    border-bottom: 2px solid var(--divider);
-    padding: 0 24px;
-    flex-shrink: 0;
-  }
-  .admin-tab {
-    background: none; border: none;
-    padding: 10px 16px 12px;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 14px; font-weight: 500;
-    color: var(--on-surface-medium);
-    cursor: pointer;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -2px;
-    transition: color 0.15s, border-color 0.15s;
-  }
-  .admin-tab.active { color: var(--primary); border-bottom-color: var(--primary); }
-  .admin-tab:hover:not(.active) { color: var(--on-surface); }
-  .admin-body { flex: 1; overflow-y: auto; padding: 20px 24px; }
-  .admin-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 13px;
-  }
-  .admin-table th {
-    text-align: left;
-    font-size: 11px; font-weight: 600;
-    text-transform: uppercase; letter-spacing: 0.5px;
-    color: var(--on-surface-medium);
-    border-bottom: 2px solid var(--divider);
-    padding: 6px 10px 8px;
-  }
-  .admin-table td {
-    padding: 10px 10px;
-    border-bottom: 1px solid var(--divider);
-    vertical-align: middle;
-  }
-  .admin-table tr:last-child td { border-bottom: none; }
-  .admin-table tr:hover td { background: var(--background); }
-  .btn-group {
-    display: inline-flex;
-    border: 1px solid var(--divider);
-    border-radius: 8px;
-    overflow: hidden;
-  }
-  .btn-group .btn-icon {
-    border-radius: 0;
-    border-right: 1px solid var(--divider);
-    padding: 5px 8px;
-  }
-  .btn-group .btn-icon:last-child { border-right: none; }
-  .btn-group .btn-icon:hover { background: var(--background); }
-  .admin-role-badge {
-    font-size: 11px; font-weight: 600;
-    padding: 2px 8px; border-radius: 20px;
-    text-transform: uppercase; letter-spacing: 0.3px;
-  }
-  .admin-role-superadmin { background: #e8f0fe; color: var(--primary); }
-  .admin-role-user { background: var(--background); color: var(--on-surface-medium); }
-  .admin-disabled-badge {
-    font-size: 11px; font-weight: 600;
-    padding: 2px 8px; border-radius: 20px;
-    text-transform: uppercase; letter-spacing: 0.3px;
-    background: #fce8e6; color: var(--error);
-  }
-  /* Toggle switch */
-  .toggle-switch {
-    position: relative; display: inline-flex; align-items: center; gap: 8px;
-    cursor: pointer; user-select: none; font-size: 13px;
-  }
-  .toggle-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
-  .toggle-track {
-    width: 34px; height: 20px; border-radius: 10px;
-    background: var(--on-surface-light);
-    transition: background 0.2s;
-    flex-shrink: 0;
-    position: relative;
-  }
-  .toggle-track::after {
-    content: ''; position: absolute; top: 3px; left: 3px;
-    width: 14px; height: 14px; border-radius: 50%;
-    background: white; transition: left 0.2s;
-  }
-  .toggle-switch input:checked + .toggle-track { background: var(--primary); }
-  .toggle-switch input:checked + .toggle-track::after { left: 17px; }
-  .admin-url {
-    font-family: 'DM Mono', monospace;
-    font-size: 11px; color: var(--on-surface-medium);
-    max-width: 260px;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    display: block;
-  }
-  .admin-empty {
-    text-align: center;
-    padding: 40px;
-    color: var(--on-surface-light);
-    font-size: 14px;
-  }
-
-  body.modal-open { overflow: hidden; }
-  body.auth-visible .topbar,
-  body.auth-visible .impersonation-banner,
-  body.auth-visible .main { filter: blur(4px); pointer-events: none; user-select: none; }
-
-  /* IMPERSONATION BANNER */
-  .impersonation-banner {
-    background: var(--error);
-    color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 14px;
-    padding: 10px 24px;
-    font-size: 13px;
-    font-weight: 500;
-    position: sticky;
-    top: 0;
-    z-index: 500;
-  }
-  .impersonation-banner .btn {
-    background: rgba(255,255,255,0.2);
-    color: #fff;
-    border: 1px solid rgba(255,255,255,0.4);
-    padding: 4px 12px;
-    font-size: 12px;
-  }
-  .impersonation-banner .btn:hover { background: rgba(255,255,255,0.32); }
-
-  /* AUTH OVERLAY */
-  .auth-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(32,33,36,0.52);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 24px;
-    z-index: 400;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.2s ease;
-  }
-  .auth-overlay.show {
-    opacity: 1;
-    pointer-events: auto;
-  }
-  .auth-dialog {
-    width: min(400px, 100%);
-    background: var(--surface);
-    border-radius: 20px;
-    box-shadow: var(--elevation-3);
-    padding: 32px 28px 28px;
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-    transform: translateY(8px) scale(0.98);
-    transition: transform 0.2s ease;
-  }
-  .auth-overlay.show .auth-dialog {
-    transform: translateY(0) scale(1);
-  }
-  .auth-logo {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-  .auth-logo h2 {
-    font-size: 24px;
-    font-weight: 500;
-    letter-spacing: -0.5px;
-  }
-  .auth-logo h2 span { color: var(--primary); }
-  .auth-tabs {
-    display: flex;
-    border-bottom: 2px solid var(--divider);
-  }
-  .auth-tab {
-    background: none;
-    border: none;
-    padding: 8px 16px 10px;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--on-surface-medium);
-    cursor: pointer;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -2px;
-    transition: color 0.15s, border-color 0.15s;
-  }
-  .auth-tab.active {
-    color: var(--primary);
-    border-bottom-color: var(--primary);
-  }
-  .auth-tab:hover:not(.active) { color: var(--on-surface); }
-  .auth-error {
-    font-size: 13px;
-    color: var(--error);
-    min-height: 16px;
-    margin: -10px 0;
-  }
-  .auth-dialog .field { display: flex; flex-direction: column; gap: 6px; }
-  .auth-dialog form { display: flex; flex-direction: column; gap: 14px; }
-
-  /* TOPBAR USER AREA */
-  .user-area {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .user-name {
-    font-size: 13px;
-    color: var(--on-surface-medium);
-    font-weight: 500;
-    max-width: 140px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  /* CHIP */
-  .chip {
-    display: inline-flex; align-items: center; gap: 4px;
-    background: var(--background);
-    border-radius: 20px;
-    padding: 3px 10px;
-    font-size: 12px; font-weight: 500;
-    color: var(--on-surface-medium);
-  }
-  .chip.chip-changed { background: #fef7e0; color: #5f3b00; }
-  .chip.chip-ok { background: #e6f4ea; color: #1e6832; }
-  .chip.chip-error { background: #fce8e6; color: #9c0d07; }
-  .chip.chip-paused { background: #eceff1; color: #5f6368; }
-
-  /* LOADING */
-  .spinner {
-    width: 16px; height: 16px;
-    border: 2px solid rgba(255,255,255,0.3);
-    border-top-color: white;
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-    flex-shrink: 0;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  /* TOGGLE */
-  .toggle {
-    position: relative; display: inline-block;
-    width: 36px; height: 20px;
-  }
-  .toggle input { opacity: 0; width: 0; height: 0; }
-  .toggle-slider {
-    position: absolute; inset: 0;
-    background: #ccc; border-radius: 20px;
-    cursor: pointer; transition: background 0.2s;
-  }
-  .toggle-slider:before {
-    content: ''; position: absolute;
-    width: 14px; height: 14px;
-    left: 3px; bottom: 3px;
-    background: white; border-radius: 50%;
-    transition: transform 0.2s;
-    box-shadow: 0 1px 3px rgba(0,0,0,.3);
-  }
-  .toggle input:checked + .toggle-slider { background: var(--primary); }
-  .toggle input:checked + .toggle-slider:before { transform: translateX(16px); }
-
-  /* EDIT PANEL */
-  .tracker-edit-panel {
-    border-top: 1px solid var(--divider);
-    background: #fafafa;
-    padding: 14px 20px;
-    display: grid;
-    grid-template-columns: 1fr auto auto;
-    gap: 10px;
-    align-items: end;
-  }
-  .tracker-edit-panel .field input,
-  .tracker-edit-panel .field select {
-    font-size: 13px;
-    padding: 7px 10px;
-  }
-  .tracker-edit-row {
-    display: flex; gap: 10px; align-items: end; flex-wrap: wrap;
-  }
-  .tracker-edit-row .field { min-width: 120px; flex: 1; }
-  .ai-checkbox-row {
-    display: flex; align-items: center; gap: 8px;
-    font-size: 13px; color: var(--on-surface-medium);
-    padding-bottom: 2px;
-    white-space: nowrap;
-    cursor: pointer;
-    user-select: none;
-  }
-  .ai-checkbox-row input[type=checkbox] {
-    width: 15px; height: 15px; cursor: pointer;
-    accent-color: var(--primary);
-  }
-
-  /* RESPONSIVE */
-  @media (max-width: 640px) {
-    .add-form { grid-template-columns: 1fr 1fr; }
-    .add-form .field:first-child { grid-column: 1 / -1; }
-    .add-form .btn-primary { grid-column: 1 / -1; }
-  }
-</style>
+<link rel="stylesheet" href="/style.css">
 </head>
 <body>
 
@@ -837,7 +21,7 @@
 <div class="topbar">
   <div class="topbar-logo">
     <div class="topbar-icon"><span class="material-icons">radar</span></div>
-    <h1>Watch<span>dog</span></h1>
+    <h1>Watch<span>bot</span></h1>
   </div>
   <div class="topbar-spacer"></div>
   <span class="topbar-badge" id="activeCount">0 active</span>
@@ -856,6 +40,41 @@
 </div>
 
 <div class="main">
+
+  <!-- AI RESOURCE FINDER -->
+  <div class="card ai-finder-card" id="aiFinderCard">
+    <div class="add-card-header">
+      <span class="material-icons" style="color:#7c4dff">auto_awesome</span>
+      AI Resource Finder
+    </div>
+    <div class="ai-finder-form">
+      <div class="field" style="flex:1">
+        <label for="aiSearchInput">What are you interested in tracking?</label>
+        <input type="text" id="aiSearchInput"
+          placeholder='e.g. "Donald Trump", "Bitcoin price", "SpaceX launches"…'
+          autocomplete="off"
+          onkeydown="if(event.key==='Enter')searchAIResources()" />
+      </div>
+      <button class="btn btn-primary" id="aiSearchBtn" onclick="searchAIResources()">
+        <span class="material-icons" style="font-size:18px">auto_awesome</span>
+        Find Resources
+      </button>
+    </div>
+    <div id="aiResultsPanel" style="display:none">
+      <div class="ai-results-toolbar">
+        <span id="aiResultsTitle"></span>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-text" onclick="aiSelectAll(true)" style="font-size:13px;padding:5px 10px">Select all</button>
+          <button class="btn btn-text" onclick="aiSelectAll(false)" style="font-size:13px;padding:5px 10px">Deselect all</button>
+          <button class="btn btn-primary" id="aiAddSelectedBtn" onclick="openAddSelectedModal()" disabled>
+            <span class="material-icons" style="font-size:17px">playlist_add</span>
+            <span id="aiAddSelectedLabel">Add Selected</span>
+          </button>
+        </div>
+      </div>
+      <div class="ai-suggestions-list" id="aiSuggestionsList"></div>
+    </div>
+  </div>
 
   <!-- ADD TRACKER FORM -->
   <div class="card add-card">
@@ -901,21 +120,42 @@
   </div>
 
   <!-- TRACKER LIST -->
-  <div class="section-header">
+  <div class="section-header" style="flex-wrap:wrap;row-gap:6px">
     <span class="section-title">Tracked Resources</span>
-    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-      <button class="btn btn-text" onclick="setAllActive(true)" title="Activate all trackers">
-        <span class="material-icons" style="font-size:16px">play_circle</span> Activate all
-      </button>
-      <button class="btn btn-text" onclick="setAllActive(false)" title="Deactivate all trackers">
-        <span class="material-icons" style="font-size:16px">pause_circle</span> Deactivate all
-      </button>
-      <button class="btn btn-text" onclick="invertAll()" title="Flip each tracker's active state">
-        <span class="material-icons" style="font-size:16px">swap_vert</span> Invert
-      </button>
-      <button class="btn btn-text" onclick="checkAll()" id="checkAllBtn">
-        <span class="material-icons" style="font-size:16px">refresh</span> Check all now
-      </button>
+    <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">
+      <div class="section-search">
+        <span class="material-icons">search</span>
+        <input type="search" id="trackerSearch" placeholder="Filter trackers…" oninput="setTrackerFilter(this.value)" autocomplete="off" />
+      </div>
+      <span id="trackerFilterCount" style="font-size:12px;color:var(--on-surface-medium);white-space:nowrap;margin:0 2px"></span>
+      <div style="display:flex;gap:2px;align-items:center;border-left:1px solid var(--divider);padding-left:6px;margin-left:2px">
+        <button class="btn-icon" onclick="setAllActive(true)" title="Activate all trackers" style="color:var(--on-surface-medium)">
+          <span class="material-icons" style="font-size:20px">play_circle</span>
+        </button>
+        <button class="btn-icon" onclick="setAllActive(false)" title="Deactivate all trackers" style="color:var(--on-surface-medium)">
+          <span class="material-icons" style="font-size:20px">pause_circle</span>
+        </button>
+        <button class="btn-icon" onclick="invertAll()" title="Invert active states" style="color:var(--on-surface-medium)">
+          <span class="material-icons" style="font-size:20px">swap_vert</span>
+        </button>
+        <button class="btn-icon" onclick="checkAll()" id="checkAllBtn" title="Check all now" style="color:var(--on-surface-medium)">
+          <span class="material-icons" style="font-size:20px">refresh</span>
+        </button>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;border-left:1px solid var(--divider);padding-left:8px;margin-left:2px">
+        <label style="display:flex;align-items:center;gap:5px;font-size:13px;color:var(--on-surface-medium);cursor:pointer;user-select:none">
+          <input type="checkbox" id="showChangedOnlyChk" onchange="setShowChangedOnly(this.checked)" style="accent-color:var(--warning);width:15px;height:15px">
+          Changed only
+        </label>
+        <label style="display:flex;align-items:center;gap:5px;font-size:13px;color:var(--on-surface-medium);cursor:pointer;user-select:none">
+          <input type="checkbox" id="showActiveOnlyChk" onchange="setShowActiveOnly(this.checked)" style="accent-color:var(--primary);width:15px;height:15px">
+          Active only
+        </label>
+        <label style="display:flex;align-items:center;gap:5px;font-size:13px;color:var(--on-surface-medium);cursor:pointer;user-select:none">
+          <input type="checkbox" id="showAIOnlyChk" onchange="setShowAIOnly(this.checked)" style="accent-color:var(--primary);width:15px;height:15px">
+          AI enabled
+        </label>
+      </div>
     </div>
   </div>
 
@@ -928,7 +168,7 @@
   <div class="auth-dialog" role="dialog" aria-modal="true" aria-labelledby="authTitle">
     <div class="auth-logo">
       <div class="topbar-icon"><span class="material-icons">radar</span></div>
-      <h2 id="authTitle">Watch<span>dog</span></h2>
+      <h2 id="authTitle">Watch<span>bot</span></h2>
     </div>
     <div class="auth-tabs">
       <button class="auth-tab active" data-tab="login"    onclick="switchAuthTab('login')">Sign in</button>
@@ -1020,9 +260,27 @@
           </button>
         </div>
         <p class="profile-msg" id="adminAddUserMsg" style="margin:0 0 8px"></p>
+        <div class="admin-search-bar">
+          <span class="material-icons">search</span>
+          <input type="search" id="adminUsersSearchInput" placeholder="Search users by name or email…" oninput="setAdminUsersSearch(this.value)" autocomplete="off" />
+        </div>
+        <div id="adminUsersBulkBar" style="display:flex;align-items:center;gap:10px;padding:4px 0 8px;min-height:34px">
+          <span id="adminUsrSelCount" style="font-size:13px;color:var(--on-surface-medium);flex:1"></span>
+          <button class="btn btn-text" style="height:30px;padding:0 12px;font-size:12px" onclick="adminBulkToggleUsers(false)" id="adminUsrBulkEnableBtn" disabled>
+            <span class="material-icons" style="font-size:15px">check_circle_outline</span> Enable
+          </button>
+          <button class="btn btn-text" style="height:30px;padding:0 12px;font-size:12px" onclick="adminBulkToggleUsers(true)" id="adminUsrBulkDisableBtn" disabled>
+            <span class="material-icons" style="font-size:15px">block</span> Disable
+          </button>
+          <button class="btn" style="height:30px;padding:0 12px;font-size:12px;background:#fce8e6;color:var(--error);border:1px solid #f5c6c3" onclick="adminBulkDeleteUsers()" id="adminUsrBulkDeleteBtn" disabled>
+            <span class="material-icons" style="font-size:15px">person_remove</span> Delete selected
+          </button>
+          <button class="btn btn-text" style="height:30px;padding:0 10px;font-size:12px;visibility:hidden" onclick="adminUserClearSelection()" id="adminUsrClearSelBtn">Clear</button>
+        </div>
         <table class="admin-table">
           <thead>
             <tr>
+              <th style="width:36px"><input type="checkbox" id="adminUsersSelectAllOnPage" onchange="adminUserSelectAllPage(this.checked)" title="Select all on this page" style="cursor:pointer;accent-color:var(--primary)"></th>
               <th>Username</th>
               <th>Email</th>
               <th>Role</th>
@@ -1035,15 +293,35 @@
           </thead>
           <tbody id="adminUsersBody"></tbody>
         </table>
+        <div id="adminUsersPagination" class="admin-pagination"></div>
       </div>
       <!-- Trackers tab -->
       <div id="adminTrackersTab" style="display:none">
+        <div class="admin-search-bar" style="margin-top:12px">
+          <span class="material-icons">search</span>
+          <input type="search" id="adminTrackersSearchInput" placeholder="Search by label, URL, or owner…" oninput="setAdminTrackersSearch(this.value)" autocomplete="off" />
+        </div>
+        <div id="adminTrackersBulkBar" style="display:flex;align-items:center;gap:10px;padding:4px 0 8px;min-height:34px">
+          <span id="adminTrkSelCount" style="font-size:13px;color:var(--on-surface-medium);flex:1"></span>
+          <button class="btn btn-text" style="height:30px;padding:0 12px;font-size:12px" onclick="adminBulkToggleTrackers(true)" id="adminTrkBulkEnableBtn" disabled>
+            <span class="material-icons" style="font-size:15px">play_circle_outline</span> Enable
+          </button>
+          <button class="btn btn-text" style="height:30px;padding:0 12px;font-size:12px" onclick="adminBulkToggleTrackers(false)" id="adminTrkBulkDisableBtn" disabled>
+            <span class="material-icons" style="font-size:15px">pause_circle_outline</span> Disable
+          </button>
+          <button class="btn" style="height:30px;padding:0 12px;font-size:12px;background:#fce8e6;color:var(--error);border:1px solid #f5c6c3" onclick="adminBulkDeleteTrackers()" id="adminTrkBulkDeleteBtn" disabled>
+            <span class="material-icons" style="font-size:15px">delete_outline</span> Delete selected
+          </button>
+          <button class="btn btn-text" style="height:30px;padding:0 10px;font-size:12px" onclick="adminTrackerClearSelection()" id="adminTrkClearSelBtn">Clear</button>
+        </div>
         <table class="admin-table">
           <thead>
             <tr>
+              <th style="width:36px"><input type="checkbox" id="adminSelectAllOnPage" onchange="adminTrackerSelectAllPage(this.checked)" title="Select all on this page" style="cursor:pointer;accent-color:var(--primary)"></th>
               <th>Label</th>
               <th>URL</th>
               <th>Owner</th>
+              <th>Interval</th>
               <th>Status</th>
               <th>Changes</th>
               <th>Active</th>
@@ -1052,6 +330,7 @@
           </thead>
           <tbody id="adminTrackersBody"></tbody>
         </table>
+        <div id="adminTrackersPagination" class="admin-pagination"></div>
       </div>
     </div>
   </div>
@@ -1209,1145 +488,48 @@
   </div>
 </div>
 
-<script>
-// ─── STATE ────────────────────────────────────────────────────────────────────
-let trackers    = [];
-let editingId   = null;
-let currentUser = null;
-let evtSource   = null;
-let confirmResolver   = null;
-let confirmKeyHandler = null;
-
-// ─── INIT ─────────────────────────────────────────────────────────────────────
-async function init() {
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
-  }
-  try {
-    const res = await fetch('/api/auth/me');
-    if (res.ok) {
-      currentUser = await res.json();
-      showApp();
-    } else {
-      showAuthOverlay('login');
-    }
-  } catch {
-    showAuthOverlay('login');
-  }
-}
-
-// ─── AUTH UI ──────────────────────────────────────────────────────────────────
-function showAuthOverlay(tab = 'login') {
-  const overlay = document.getElementById('authOverlay');
-  overlay.classList.add('show');
-  overlay.setAttribute('aria-hidden', 'false');
-  document.body.classList.add('modal-open', 'auth-visible');
-  switchAuthTab(tab);
-  setTimeout(() => {
-    const el = document.getElementById(tab === 'login' ? 'loginUsername' : 'registerUsername');
-    if (el) el.focus();
-  }, 100);
-}
-
-function hideAuthOverlay() {
-  const overlay = document.getElementById('authOverlay');
-  overlay.classList.remove('show');
-  overlay.setAttribute('aria-hidden', 'true');
-  document.body.classList.remove('modal-open', 'auth-visible');
-}
-
-function switchAuthTab(tab) {
-  document.querySelectorAll('.auth-tab').forEach(t =>
-    t.classList.toggle('active', t.dataset.tab === tab)
-  );
-  document.getElementById('loginForm').style.display    = tab === 'login'    ? '' : 'none';
-  document.getElementById('registerForm').style.display = tab === 'register' ? '' : 'none';
-  document.getElementById('authError').textContent = '';
-}
-
-function showApp() {
-  hideAuthOverlay();
-  document.getElementById('userDisplay').textContent = currentUser.username;
-  document.getElementById('userArea').style.display  = 'flex';
-  const adminBtn = document.getElementById('adminPanelBtn');
-  const banner   = document.getElementById('impersonationBanner');
-  if (currentUser.impersonatedBy) {
-    document.getElementById('impersonationTarget').textContent = currentUser.username;
-    banner.style.display = 'flex';
-    adminBtn.style.display = 'none'; // hide admin button while impersonating
-  } else {
-    banner.style.display = 'none';
-    adminBtn.style.display = currentUser.role === 'superadmin' ? 'flex' : 'none';
-  }
-  if (currentUser.notificationsEnabled && Notification.permission === 'default') {
-    Notification.requestPermission();
-  }
-  connectSSE();
-}
-
-async function handleLogin(e) {
-  e.preventDefault();
-  const username = document.getElementById('loginUsername').value.trim();
-  const password = document.getElementById('loginPassword').value;
-  const errorEl  = document.getElementById('authError');
-  errorEl.textContent = '';
-  try {
-    const res  = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password })
-    });
-    const data = await res.json();
-    if (!res.ok) { errorEl.textContent = data.error || 'Login failed'; return; }
-    currentUser = data;
-    showApp();
-  } catch {
-    errorEl.textContent = 'Connection error. Is the server running?';
-  }
-}
-
-async function handleRegister(e) {
-  e.preventDefault();
-  const username = document.getElementById('registerUsername').value.trim();
-  const email    = document.getElementById('registerEmail').value.trim();
-  const password = document.getElementById('registerPassword').value;
-  const confirm  = document.getElementById('registerConfirm').value;
-  const errorEl  = document.getElementById('authError');
-  errorEl.textContent = '';
-  if (password !== confirm) { errorEl.textContent = 'Passwords do not match'; return; }
-  try {
-    const res  = await fetch('/api/auth/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, email, password })
-    });
-    const data = await res.json();
-    if (!res.ok) { errorEl.textContent = data.error || 'Registration failed'; return; }
-    currentUser = data;
-    showApp();
-    showSnackbar(`Welcome to Watchdog, ${currentUser.username}!`);
-  } catch {
-    errorEl.textContent = 'Connection error. Is the server running?';
-  }
-}
-
-async function handleLogout() {
-  await fetch('/api/auth/logout', { method: 'POST' });
-  if (evtSource) { evtSource.close(); evtSource = null; }
-  currentUser = null;
-  trackers    = [];
-  renderTrackers();
-  updateBadge();
-  document.getElementById('userArea').style.display = 'none';
-  document.getElementById('impersonationBanner').style.display = 'none';
-  showAuthOverlay('login');
-}
-
-// ─── ADMIN PANEL ──────────────────────────────────────────────────────────────
-let adminCurrentTab = 'users';
-
-async function openAdminPanel() {
-  switchAdminTab('users');
-  const overlay = document.getElementById('adminOverlay');
-  overlay.classList.add('show');
-  overlay.setAttribute('aria-hidden', 'false');
-  document.body.classList.add('modal-open');
-  await loadAdminTab('users');
-}
-
-function closeAdminPanel() {
-  const overlay = document.getElementById('adminOverlay');
-  overlay.classList.remove('show');
-  overlay.setAttribute('aria-hidden', 'true');
-  document.body.classList.remove('modal-open');
-}
-
-function switchAdminTab(tab) {
-  adminCurrentTab = tab;
-  document.querySelectorAll('.admin-tab').forEach(t =>
-    t.classList.toggle('active', t.dataset.tab === tab)
-  );
-  document.getElementById('adminUsersTab').style.display    = tab === 'users'    ? '' : 'none';
-  document.getElementById('adminTrackersTab').style.display = tab === 'trackers' ? '' : 'none';
-  loadAdminTab(tab);
-}
-
-async function loadAdminTab(tab) {
-  if (tab === 'users') {
-    const res  = await fetch('/api/admin/users');
-    if (!res.ok) return;
-    const users = await res.json();
-    const tbody = document.getElementById('adminUsersBody');
-    if (!users.length) { tbody.innerHTML = `<tr><td colspan="8" class="admin-empty">No users found.</td></tr>`; return; }
-    tbody.innerHTML = users.map(u => `
-      <tr>
-        <td><strong>${escHtml(u.username)}</strong></td>
-        <td>${u.email ? escHtml(u.email) : '<span style="color:var(--on-surface-light)">—</span>'}</td>
-        <td><span class="admin-role-badge admin-role-${u.role === 'superadmin' ? 'superadmin' : 'user'}">${u.role === 'superadmin' ? 'Super Admin' : 'User'}</span></td>
-        <td>${u.trackerCount}</td>
-        <td>${u.id === currentUser.id ? '—' : `<input type="number" min="0" value="${u.trackerLimit ?? ''}" placeholder="∞"
-          style="width:56px;padding:3px 6px;border:1px solid var(--divider);border-radius:6px;font-size:12px;background:var(--surface)"
-          onchange="adminSetTrackerLimit('${u.id}', this.value)" title="Max trackers (blank = unlimited)" />`}</td>
-        <td>${u.id === currentUser.id ? '' : `<label class="toggle-switch" title="${u.disabled ? 'Enable' : 'Disable'} account">
-          <input type="checkbox" ${u.disabled ? '' : 'checked'} onchange="adminToggleDisabled('${u.id}', !this.checked)">
-          <span class="toggle-track"></span>
-        </label>`}</td>
-        <td style="color:var(--on-surface-medium);font-size:12px">${new Date(u.createdAt).toLocaleDateString()}</td>
-        <td>${u.id === currentUser.id ? '' : `
-          <div class="btn-group">
-            <button class="btn-icon" style="color:var(--on-surface-medium)" title="Edit user" onclick="openEditUser('${u.id}','${escHtml(u.username)}','${escHtml(u.email||'')}','${u.role}','${u.trackerLimit??''}')">
-              <span class="material-icons" style="font-size:18px">edit</span>
-            </button>
-            <button class="btn-icon" style="color:var(--primary)" title="Impersonate user" onclick="adminImpersonate('${u.id}','${escHtml(u.username)}')">
-              <span class="material-icons" style="font-size:18px">manage_accounts</span>
-            </button>
-            <button class="btn-icon" style="color:var(--error)" title="Delete user" onclick="adminDeleteUser('${u.id}','${escHtml(u.username)}')">
-              <span class="material-icons" style="font-size:18px">person_remove</span>
-            </button>
-          </div>`}</td>
-      </tr>`).join('');
-  } else {
-    const res  = await fetch('/api/admin/trackers');
-    if (!res.ok) return;
-    const all  = await res.json();
-    // Fetch user list to resolve userId → username
-    const usersRes = await fetch('/api/admin/users');
-    const users    = usersRes.ok ? await usersRes.json() : [];
-    const userMap  = Object.fromEntries(users.map(u => [u.id, u.username]));
-    const tbody    = document.getElementById('adminTrackersBody');
-    if (!all.length) { tbody.innerHTML = `<tr><td colspan="7" class="admin-empty">No trackers found.</td></tr>`; return; }
-    tbody.innerHTML = all.map(t => `
-      <tr>
-        <td>${escHtml(t.label || t.url)}</td>
-        <td><span class="admin-url" title="${escHtml(t.url)}">${escHtml(t.url)}</span></td>
-        <td style="font-size:12px;color:var(--on-surface-medium)">${escHtml(userMap[t.userId] || t.userId)}</td>
-        <td><span class="chip chip-${t.status === 'changed' ? 'changed' : t.status === 'error' ? 'error' : t.active ? 'ok' : 'paused'}" style="font-size:11px">${t.active ? t.status : 'paused'}</span></td>
-        <td style="text-align:center">${t.changeCount || 0}</td>
-        <td><label class="toggle-switch" title="${t.active ? 'Disable' : 'Enable'} tracker">
-          <input type="checkbox" ${t.active ? 'checked' : ''} onchange="adminToggleTracker('${t.id}', this.checked)">
-          <span class="toggle-track"></span>
-        </label></td>
-        <td><button class="btn-icon" style="color:var(--error)" title="Delete tracker" onclick="adminDeleteTracker('${t.id}','${escHtml(t.label || t.url)}')"><span class="material-icons" style="font-size:18px">delete_outline</span></button></td>
-      </tr>`).join('');
-  }
-}
-
-async function adminAddUser() {
-  const username = document.getElementById('adminNewUsername').value.trim();
-  const email    = document.getElementById('adminNewEmail').value.trim();
-  const password = document.getElementById('adminNewPassword').value;
-  const role     = document.getElementById('adminNewRole').value;
-  const msgEl    = document.getElementById('adminAddUserMsg');
-  msgEl.textContent = '';
-  msgEl.className   = 'profile-msg';
-
-  if (!username || !email || !password) {
-    msgEl.textContent = 'Username, email, and password are required.';
-    msgEl.classList.add('error');
-    return;
-  }
-
-  const res  = await fetch('/api/admin/users', {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ username, email, password, role }),
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    msgEl.textContent = data.error || 'Failed to create user.';
-    msgEl.classList.add('error');
-  } else {
-    msgEl.textContent = `User "${data.username}" created.`;
-    msgEl.classList.add('success');
-    document.getElementById('adminNewUsername').value = '';
-    document.getElementById('adminNewEmail').value = '';
-    document.getElementById('adminNewPassword').value = '';
-    document.getElementById('adminNewRole').value = 'user';
-    loadAdminTab('users');
-  }
-}
-
-async function adminDeleteUser(id, username) {
-  const ok = await openDeleteConfirmDialog(`user "${username}" and all their trackers`);
-  if (!ok) return;
-  const res = await fetch(`/api/admin/users/${id}`, { method: 'DELETE' });
-  if (res.ok) { showSnackbar(`User ${username} deleted.`); loadAdminTab('users'); }
-  else { const d = await res.json(); showSnackbar(d.error || 'Delete failed', 'error'); }
-}
-
-async function adminImpersonate(id, username) {
-  const res = await fetch(`/api/admin/impersonate/${id}`, { method: 'POST' });
-  const data = await res.json();
-  if (!res.ok) { showSnackbar(data.error || 'Failed to impersonate', 'error'); return; }
-  currentUser = data;
-  closeAdminPanel();
-  if (evtSource) { evtSource.close(); evtSource = null; }
-  trackers = [];
-  renderTrackers();
-  showApp();
-}
-
-async function stopImpersonating() {
-  const res = await fetch('/api/admin/stop-impersonate', { method: 'POST' });
-  const data = await res.json();
-  if (!res.ok) { showSnackbar(data.error || 'Failed to restore session', 'error'); return; }
-  currentUser = data;
-  if (evtSource) { evtSource.close(); evtSource = null; }
-  trackers = [];
-  renderTrackers();
-  showApp();
-}
-
-// ─── EDIT USER ───────────────────────────────────────────────────────────────
-let editUserId = null;
-
-function openEditUser(id, username, email, role, limit) {
-  editUserId = id;
-  document.getElementById('editUserSubtitle').textContent = username;
-  document.getElementById('editUserEmail').value = email;
-  document.getElementById('editUserRole').value = role;
-  document.getElementById('editUserLimit').value = limit;
-  document.getElementById('editUserMsg').textContent = '';
-  document.getElementById('editUserMsg').className = 'profile-msg';
-  const overlay = document.getElementById('editUserOverlay');
-  overlay.classList.add('show');
-  overlay.setAttribute('aria-hidden', 'false');
-  document.body.classList.add('modal-open');
-  document.getElementById('editUserEmail').focus();
-}
-
-function closeEditUser() {
-  const overlay = document.getElementById('editUserOverlay');
-  overlay.classList.remove('show');
-  overlay.setAttribute('aria-hidden', 'true');
-  document.body.classList.remove('modal-open');
-  editUserId = null;
-}
-
-async function saveEditUser() {
-  if (!editUserId) return;
-  const email = document.getElementById('editUserEmail').value.trim();
-  const role  = document.getElementById('editUserRole').value;
-  const limitRaw = document.getElementById('editUserLimit').value;
-  const trackerLimit = limitRaw === '' ? null : parseInt(limitRaw);
-  const msgEl = document.getElementById('editUserMsg');
-  msgEl.textContent = '';
-  msgEl.className = 'profile-msg';
-
-  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    msgEl.textContent = 'Please enter a valid email address.';
-    msgEl.classList.add('error');
-    return;
-  }
-
-  const res = await fetch(`/api/admin/users/${editUserId}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: email || null, role, trackerLimit }),
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    msgEl.textContent = data.error || 'Failed to save changes.';
-    msgEl.classList.add('error');
-  } else {
-    showSnackbar('User updated.');
-    closeEditUser();
-    loadAdminTab('users');
-  }
-}
-
-async function adminToggleDisabled(id, disable) {
-  const res = await fetch(`/api/admin/users/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ disabled: disable }),
-  });
-  if (res.ok) {
-    showSnackbar(disable ? 'Account disabled.' : 'Account enabled.');
-    loadAdminTab('users');
-  } else {
-    const d = await res.json();
-    showSnackbar(d.error || 'Update failed', 'error');
-    loadAdminTab('users'); // revert toggle in UI
-  }
-}
-
-async function adminSetTrackerLimit(id, value) {
-  const limit = value === '' ? null : parseInt(value);
-  const res = await fetch(`/api/admin/users/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ trackerLimit: limit }),
-  });
-  if (res.ok) showSnackbar('Tracker limit updated.');
-  else { const d = await res.json(); showSnackbar(d.error || 'Update failed', 'error'); }
-}
-
-async function adminToggleTracker(id, active) {
-  const res = await fetch(`/api/admin/trackers/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ active }),
-  });
-  if (res.ok) {
-    showSnackbar(active ? 'Tracker enabled.' : 'Tracker disabled.');
-    loadAdminTab('trackers');
-  } else {
-    const d = await res.json();
-    showSnackbar(d.error || 'Update failed', 'error');
-    loadAdminTab('trackers'); // revert toggle in UI
-  }
-}
-
-async function adminDeleteTracker(id, label) {
-  const ok = await openDeleteConfirmDialog(`tracker "${label}"`);
-  if (!ok) return;
-  const res = await fetch(`/api/admin/trackers/${id}`, { method: 'DELETE' });
-  if (res.ok) { showSnackbar('Tracker deleted.'); loadAdminTab('trackers'); }
-  else { const d = await res.json(); showSnackbar(d.error || 'Delete failed', 'error'); }
-}
-
-// ─── PROFILE ──────────────────────────────────────────────────────────────────
-async function openProfile() {
-  document.getElementById('profileEmailMsg').textContent = '';
-  document.getElementById('profilePwMsg').textContent    = '';
-  document.getElementById('profileEmailMsg').className   = 'profile-msg';
-  document.getElementById('profilePwMsg').className      = 'profile-msg';
-  document.getElementById('profileCurrentPw').value = '';
-  document.getElementById('profileNewPw').value      = '';
-  document.getElementById('profileConfirmPw').value  = '';
-  document.getElementById('profileDeletePw').value   = '';
-  if (document.getElementById('profileDeleteMsg')) {
-    document.getElementById('profileDeleteMsg').textContent = '';
-    document.getElementById('profileDeleteMsg').className   = 'profile-msg';
-  }
-  document.getElementById('profileUsernameDisplay').textContent = currentUser?.username || '';
-
-  try {
-    const res = await fetch('/api/auth/profile');
-    if (res.ok) {
-      const profile = await res.json();
-      document.getElementById('profileEmail').value = profile.email || '';
-      document.getElementById('profileNotifications').checked = profile.notificationsEnabled !== false;
-    }
-  } catch {}
-
-  const overlay = document.getElementById('profileOverlay');
-  overlay.classList.add('show');
-  overlay.setAttribute('aria-hidden', 'false');
-  document.body.classList.add('modal-open');
-  setTimeout(() => document.getElementById('profileEmail').focus(), 100);
-}
-
-function closeProfile() {
-  const overlay = document.getElementById('profileOverlay');
-  overlay.classList.remove('show');
-  overlay.setAttribute('aria-hidden', 'true');
-  document.body.classList.remove('modal-open');
-}
-
-async function saveProfileEmail() {
-  const email = document.getElementById('profileEmail').value.trim();
-  const msgEl = document.getElementById('profileEmailMsg');
-  msgEl.textContent = '';
-  msgEl.className   = 'profile-msg';
-  try {
-    const res  = await fetch('/api/auth/profile', {
-      method:  'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ email }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      msgEl.textContent = data.error || 'Failed to save email';
-      msgEl.classList.add('error');
-    } else {
-      msgEl.textContent = 'Email saved.';
-      msgEl.classList.add('success');
-    }
-  } catch {
-    msgEl.textContent = 'Connection error.';
-    msgEl.classList.add('error');
-  }
-}
-
-async function saveProfilePassword() {
-  const currentPw = document.getElementById('profileCurrentPw').value;
-  const newPw     = document.getElementById('profileNewPw').value;
-  const confirmPw = document.getElementById('profileConfirmPw').value;
-  const msgEl     = document.getElementById('profilePwMsg');
-  msgEl.textContent = '';
-  msgEl.className   = 'profile-msg';
-
-  if (!currentPw || !newPw || !confirmPw) {
-    msgEl.textContent = 'All password fields are required.';
-    msgEl.classList.add('error');
-    return;
-  }
-  if (newPw !== confirmPw) {
-    msgEl.textContent = 'New passwords do not match.';
-    msgEl.classList.add('error');
-    return;
-  }
-  if (newPw.length < 6) {
-    msgEl.textContent = 'New password must be at least 6 characters.';
-    msgEl.classList.add('error');
-    return;
-  }
-
-  try {
-    const res  = await fetch('/api/auth/profile', {
-      method:  'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ currentPassword: currentPw, newPassword: newPw }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      msgEl.textContent = data.error || 'Failed to change password';
-      msgEl.classList.add('error');
-    } else {
-      msgEl.textContent = 'Password changed successfully.';
-      msgEl.classList.add('success');
-      document.getElementById('profileCurrentPw').value = '';
-      document.getElementById('profileNewPw').value     = '';
-      document.getElementById('profileConfirmPw').value  = '';
-    }
-  } catch {
-    msgEl.textContent = 'Connection error.';
-    msgEl.classList.add('error');
-  }
-}
-
-function sendTestNotification() {
-  if (Notification.permission === 'granted') {
-    showBrowserNotification('Watchdog: Notifications working!', 'Browser notifications are enabled and working correctly.', '/');
-  } else if (Notification.permission === 'denied') {
-    showSnackbar('Notifications are blocked in your browser settings.', 'error');
-  } else {
-    Notification.requestPermission().then(p => {
-      if (p === 'granted') sendTestNotification();
-    });
-  }
-}
-
-async function saveProfileNotifications(enabled) {
-  try {
-    await fetch('/api/auth/profile', {
-      method:  'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ notificationsEnabled: enabled }),
-    });
-    if (currentUser) currentUser.notificationsEnabled = enabled;
-    if (enabled && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
-      Notification.requestPermission();
-    }
-  } catch {}
-}
-
-async function deleteAccount() {
-  const pw    = document.getElementById('profileDeletePw').value;
-  const msgEl = document.getElementById('profileDeleteMsg');
-  msgEl.textContent = '';
-  msgEl.className   = 'profile-msg';
-  if (!pw) {
-    msgEl.textContent = 'Please enter your password to confirm.';
-    msgEl.classList.add('error');
-    return;
-  }
-  const ok = await openDeleteConfirmDialog('your account and all your trackers');
-  if (!ok) return;
-  try {
-    const res  = await fetch('/api/auth/profile', {
-      method:  'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ password: pw }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      msgEl.textContent = data.error || 'Failed to delete account';
-      msgEl.classList.add('error');
-    } else {
-      closeProfile();
-      if (evtSource) { evtSource.close(); evtSource = null; }
-      currentUser = null;
-      trackers    = [];
-      renderTrackers();
-      updateBadge();
-      document.getElementById('userArea').style.display = 'none';
-      showAuthOverlay('login');
-    }
-  } catch {
-    msgEl.textContent = 'Connection error.';
-    msgEl.classList.add('error');
-  }
-}
-
-// ─── SSE ──────────────────────────────────────────────────────────────────────
-function connectSSE() {
-  if (evtSource) evtSource.close();
-  evtSource = new EventSource('/api/events');
-  evtSource.onmessage = (e) => {
-    const data = JSON.parse(e.data);
-    if (data.type === 'force_logout') {
-      if (evtSource) { evtSource.close(); evtSource = null; }
-      currentUser = null;
-      trackers    = [];
-      renderTrackers();
-      updateBadge();
-      document.getElementById('userArea').style.display = 'none';
-      showAuthOverlay('login');
-      return;
-    }
-    if (data.type === 'init' || data.type === 'update') {
-      const prevStatuses = Object.fromEntries(trackers.map(t => [t.id, t.status]));
-      if (data.type === 'init') {
-        // Full replace on initial load
-        trackers = data.trackers;
-      } else {
-        // Merge update by id, preserving client's current order
-        const incoming = new Map(data.trackers.map(t => [t.id, t]));
-        trackers = trackers
-          .filter(t => incoming.has(t.id))
-          .map(t => ({ ...t, ...incoming.get(t.id) }));
-        // Prepend any newly added trackers (server always unshifts new ones to front)
-        const existingIds = new Set(trackers.map(t => t.id));
-        data.trackers.forEach(t => { if (!existingIds.has(t.id)) trackers.unshift(t); });
-      }
-      renderTrackers();
-      updateBadge();
-      if (data.type === 'update') {
-        trackers.forEach(t => {
-          if (t.status === 'changed' && prevStatuses[t.id] !== 'changed') {
-            showSnackbar(`🔔 Change detected: ${t.label}`);
-            triggerBrowserNotification(t.label, t.url);
-          }
-        });
-      }
-    }
-  };
-  evtSource.onerror = () => {
-    setTimeout(() => { if (currentUser) connectSSE(); }, 5000);
-  };
-}
-
-// ─── EDIT ─────────────────────────────────────────────────────────────────────
-function toggleEdit(id) {
-  editingId = (editingId === id) ? null : id;
-  renderTrackers();
-}
-
-async function saveEdit(id) {
-  const t = trackers.find(t => t.id === id);
-  if (!t) return;
-  const newLabel    = document.getElementById(`edit-label-${id}`).value.trim();
-  const newInterval = parseInt(document.getElementById(`edit-interval-${id}`).value);
-  const newAi       = document.getElementById(`edit-ai-${id}`).checked;
-  const body = {};
-  if (newLabel && newLabel !== t.label) body.label = newLabel;
-  if (newInterval && newInterval !== t.interval) body.interval = newInterval;
-  body.aiSummary = newAi;
-  try {
-    const res = await fetch(`/api/trackers/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
-    if (!res.ok) { showSnackbar('Failed to save changes', 'error'); return; }
-    editingId = null;
-    showSnackbar('✓ Changes saved.');
-  } catch {
-    showSnackbar('Connection error', 'error');
-  }
-}
-
-// ─── ADD TRACKER ─────────────────────────────────────────────────────────────
-async function addTracker() {
-  const url      = document.getElementById('urlInput').value.trim();
-  const label    = document.getElementById('labelInput').value.trim();
-  const interval  = parseInt(document.getElementById('intervalSelect').value);
-  const aiSummary = document.getElementById('addAiSummary').checked;
-  if (!url) { showSnackbar('Please enter a URL.', 'error'); return; }
-  try { new URL(url); } catch { showSnackbar('Please enter a valid URL.', 'error'); return; }
-  try {
-    const res = await fetch('/api/trackers', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, label, interval, aiSummary })
-    });
-    if (!res.ok) { const d = await res.json(); showSnackbar(d.error || 'Failed to add', 'error'); return; }
-    document.getElementById('urlInput').value   = '';
-    document.getElementById('labelInput').value = '';
-    document.getElementById('addAiSummary').checked = false;
-  } catch {
-    showSnackbar('Connection error', 'error');
-  }
-}
-
-// ─── REMOVE TRACKER ──────────────────────────────────────────────────────────
-async function removeTracker(id) {
-  const t = trackers.find(t => t.id === id);
-  if (!t) return;
-  const shouldDelete = await openDeleteConfirmDialog(`tracker "${t.label}"`); 
-  if (!shouldDelete) return;
-  try {
-    const res = await fetch(`/api/trackers/${id}`, { method: 'DELETE' });
-    if (!res.ok) { showSnackbar('Failed to delete tracker', 'error'); }
-  } catch {
-    showSnackbar('Connection error', 'error');
-  }
-}
-
-// ─── TOGGLE ACTIVE ────────────────────────────────────────────────────────────
-async function toggleTracker(id) {
-  const t = trackers.find(t => t.id === id);
-  if (!t) return;
-  // Optimistic update
-  t.active = !t.active;
-  renderTrackers();
-  updateBadge();
-  try {
-    await fetch(`/api/trackers/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ active: t.active })
-    });
-  } catch {
-    t.active = !t.active; // revert
-    renderTrackers();
-    updateBadge();
-    showSnackbar('Connection error', 'error');
-  }
-}
-
-// ─── CHECK ────────────────────────────────────────────────────────────────────
-async function checkTracker(id) {
-  const t = trackers.find(t => t.id === id);
-  if (t) { t.status = 'checking'; renderTrackers(); }
-  try {
-    await fetch(`/api/trackers/${id}/check`, { method: 'POST' });
-  } catch {
-    showSnackbar('Connection error', 'error');
-  }
-}
-
-async function checkAll() {
-  const btn = document.getElementById('checkAllBtn');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="material-icons" style="font-size:16px;animation:spin 0.7s linear infinite;display:inline-block">refresh</span> Checking…';
-  try {
-    await Promise.all(
-      trackers.filter(t => t.active).map(t => fetch(`/api/trackers/${t.id}/check`, { method: 'POST' }))
-    );
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = '<span class="material-icons" style="font-size:16px">refresh</span> Check all now';
-  }
-}
-
-// ─── BULK ACTIVE CONTROLS ─────────────────────────────────────────────────────
-async function setAllActive(active) {
-  const targets = trackers.filter(t => t.active !== active);
-  if (!targets.length) return;
-  targets.forEach(t => { t.active = active; });
-  renderTrackers();
-  updateBadge();
-  try {
-    await Promise.all(targets.map(t =>
-      fetch(`/api/trackers/${t.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ active })
-      })
-    ));
-  } catch {
-    showSnackbar('Connection error', 'error');
-  }
-}
-
-async function invertAll() {
-  if (!trackers.length) return;
-  trackers.forEach(t => { t.active = !t.active; });
-  renderTrackers();
-  updateBadge();
-  try {
-    await Promise.all(trackers.map(t =>
-      fetch(`/api/trackers/${t.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ active: t.active })
-      })
-    ));
-  } catch {
-    showSnackbar('Connection error', 'error');
-  }
-}
-
-// ─── DISMISS ──────────────────────────────────────────────────────────────────
-function toggleDiffPanel(id, btn) {
-  const panel = document.getElementById(`diff-panel-${id}`);
-  if (!panel) return;
-  const isOpen = panel.classList.toggle('open');
-  btn.textContent = isOpen ? 'Hide changes' : 'Show changes';
-}
-
-async function dismissChange(id) {
-  try {
-    await fetch(`/api/trackers/${id}/dismiss`, { method: 'POST' });
-  } catch {
-    showSnackbar('Connection error', 'error');
-  }
-}
-
-// ─── RENDER ───────────────────────────────────────────────────────────────────
-function renderTrackers() {
-  const list  = document.getElementById('trackerList');
-
-  if (trackers.length === 0) {
-    list.innerHTML = `
-      <div class="card empty-state">
-        <span class="material-icons">travel_explore</span>
-        <h3>Nothing tracked yet</h3>
-        <p>Add a URL above to start watching for changes.</p>
-      </div>`;
-    return;
-  }
-
-  // Remember which diff panels are open so we can restore them after re-render
-  const openDiffPanels = new Set(
-    [...list.querySelectorAll('.diff-panel.open')].map(el => el.id)
-  );
-
-  list.innerHTML = '';
-  trackers.forEach(t => {
-    const el = document.createElement('div');
-    el.className = `tracker-item ${t.active ? '' : 'tracker-item-paused'}`.trim();
-    el.dataset.id = t.id;
-    el.draggable = false;
-    el.innerHTML = trackerHTML(t);
-    list.appendChild(el);
-  });
-
-  // Restore open diff panels
-  openDiffPanels.forEach(panelId => {
-    const panel = document.getElementById(panelId);
-    if (panel) {
-      panel.classList.add('open');
-      const btn = panel.previousElementSibling?.querySelector('[onclick^="toggleDiffPanel"]');
-      if (btn) btn.textContent = 'Hide changes';
-    }
-  });
-
-  initDragAndDrop(list);
-  updateBadge();
-}
-
-// ─── DRAG AND DROP ───────────────────────────────────────────────────────────
-let dragSrcId   = null;
-
-
-function initDragAndDrop(list) {
-  list.querySelectorAll('.tracker-item').forEach(item => {
-    const handle = item.querySelector('.drag-handle');
-    if (handle) {
-      handle.addEventListener('mousedown', () => { item.draggable = true; });
-    }
-    item.addEventListener('dragstart', onDragStart);
-    item.addEventListener('dragend',   onDragEnd);
-    item.addEventListener('dragover',  onDragOver);
-    item.addEventListener('dragleave', onDragLeave);
-    item.addEventListener('drop',      onDrop);
-  });
-}
-
-function onDragStart(e) {
-  dragSrcId = this.dataset.id;
-  e.dataTransfer.effectAllowed = 'move';
-  e.dataTransfer.setData('text/plain', dragSrcId);
-  setTimeout(() => this.classList.add('drag-dragging'), 0);
-}
-
-function onDragEnd() {
-  this.draggable = false;
-  this.classList.remove('drag-dragging');
-  document.querySelectorAll('.tracker-item').forEach(el => el.classList.remove('drag-over'));
-  dragSrcId = null;
-}
-
-function onDragOver(e) {
-  if (!dragSrcId || this.dataset.id === dragSrcId) return;
-  e.preventDefault();
-  e.dataTransfer.dropEffect = 'move';
-  document.querySelectorAll('.tracker-item').forEach(el => el.classList.remove('drag-over'));
-  this.classList.add('drag-over');
-}
-
-function onDragLeave() {
-  this.classList.remove('drag-over');
-}
-
-async function onDrop(e) {
-  e.preventDefault();
-  if (!dragSrcId || this.dataset.id === dragSrcId) return;
-  this.classList.remove('drag-over');
-
-  const fromIdx = trackers.findIndex(t => t.id === dragSrcId);
-  const toIdx   = trackers.findIndex(t => t.id === this.dataset.id);
-  if (fromIdx === -1 || toIdx === -1) return;
-
-  // Reorder in memory and re-render immediately (optimistic)
-  const [moved] = trackers.splice(fromIdx, 1);
-  trackers.splice(toIdx, 0, moved);
-  renderTrackers();
-
-  await persistOrder();
-}
-
-async function persistOrder() {
-  try {
-    await fetch('/api/trackers/reorder', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids: trackers.map(t => t.id) })
-    });
-  } catch {
-    showSnackbar('Could not save order', 'error');
-  }
-}
-
-function trackerHTML(t) {
-  const statusClass = !t.active             ? 'status-pending' :
-                      t.status === 'checking' ? 'status-pending' :
-                      t.status === 'changed'  ? 'status-changed' :
-                      t.status === 'error'    ? 'status-error'   :
-                      t.status === 'ok'       ? 'status-ok'      : 'status-pending';
-
-  const chipClass = !t.active            ? 'chip-paused'  :
-                    t.status === 'changed' ? 'chip-changed' :
-                    t.status === 'error'   ? 'chip-error'   :
-                    t.status === 'ok'      ? 'chip-ok'      : '';
-
-  const chipLabel = !t.active             ? 'Paused' :
-                    t.status === 'changed'  ? `${t.changeCount} change${t.changeCount !== 1 ? 's' : ''}` :
-                    t.status === 'checking' ? 'Checking…' :
-                    t.status === 'error'    ? 'Error' :
-                    t.status === 'ok'       ? 'No changes' : 'Pending';
-
-  const lastCheck    = t.lastCheck ? 'Last: ' + new Date(t.lastCheck).toLocaleTimeString() : 'Never checked';
-  const timeAgoStr   = t.lastCheck ? timeAgo(t.lastCheck) : '';
-  const intervalLabel = intervalText(t.interval);
-
-  let changeBanner = '';
-  if ((t.status === 'changed' || t.status === 'error') && t.changeSummary) {
-    const hasSnippet = t.status === 'changed' && t.changeSnippet;
-    changeBanner = `
-      <div class="tracker-change-banner">
-        <span class="material-icons">${t.status === 'error' ? 'error_outline' : 'info_outline'}</span>
-        <span class="diff-summary">${escHtml(t.changeSummary)}</span>
-        ${hasSnippet ? `<button class="btn btn-text" style="padding:4px 10px;font-size:12px;white-space:nowrap" onclick="toggleDiffPanel('${t.id}',this)">Show changes</button>` : ''}
-        ${t.status === 'changed' ? `<button class="btn btn-text" style="padding:4px 10px;font-size:12px" onclick="dismissChange('${t.id}')">Dismiss</button>` : ''}
+<!-- TRACKER OPTIONS MODAL -->
+<div class="confirm-overlay" id="trackerOptionsModal" aria-hidden="true">
+  <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="toModalTitle" style="width:min(480px,100%)">
+    <div class="confirm-header">
+      <div class="confirm-icon" style="background:var(--primary-light);color:var(--primary)">
+        <span class="material-icons">tune</span>
       </div>
-      ${hasSnippet ? `
-      <div class="diff-panel" id="diff-panel-${t.id}">
-        <div class="diff-panel-inner">
-          <div class="diff-block diff-removed">
-            <div class="diff-block-label">Before</div>${escHtml(t.changeSnippet.removed)}
-          </div>
-          <div class="diff-block diff-added">
-            <div class="diff-block-label">After</div>${escHtml(t.changeSnippet.added)}
-          </div>
-        </div>
-      </div>` : ''}`;
-  }
-
-  return `
-    <div class="tracker-main">
-      <span class="drag-handle material-icons" title="Drag to reorder">drag_indicator</span>
-      <span class="tracker-status ${statusClass}"></span>
-      <div class="tracker-info">
-        <div class="tracker-name">${escHtml(t.label)}</div>
-        <div class="tracker-url">${escHtml(t.url)}</div>
-      </div>
-      <span class="chip ${chipClass}" style="margin-right:8px">${chipLabel}</span>
-      <div class="tracker-meta">
-        <div class="tracker-interval"><span class="material-icons">schedule</span>${intervalLabel}</div>
-        <div class="tracker-last-check">${lastCheck}</div>
-        ${timeAgoStr ? `<div class="tracker-time-ago" data-ts="${t.lastCheck}">${timeAgoStr}</div>` : ''}
-      </div>
-      <div class="tracker-actions">
-        <label class="toggle" title="${t.active ? 'Pause' : 'Resume'} tracker">
-          <input type="checkbox" ${t.active ? 'checked' : ''} onchange="toggleTracker('${t.id}')">
-          <span class="toggle-slider"></span>
-        </label>
-        <button class="btn-icon material-icons" onclick="toggleEdit('${t.id}')" title="Edit">edit</button>
-        <button class="btn-icon material-icons" onclick="checkTracker('${t.id}')" title="Check now" ${t.status === 'checking' ? 'disabled' : ''}>refresh</button>
-        <button class="btn-icon material-icons" style="color:var(--error)" onclick="removeTracker('${t.id}')" title="Remove">delete_outline</button>
-      </div>
+      <h3 class="confirm-title" id="toModalTitle">Add Trackers</h3>
     </div>
-    ${editingId === t.id ? `
-    <div class="tracker-edit-panel">
-      <div class="tracker-edit-row">
-        <div class="field">
-          <label>Label</label>
-          <input type="text" id="edit-label-${t.id}" value="${escHtml(t.label)}" placeholder="Label" />
-        </div>
-        <div class="field">
-          <label>Check every</label>
-          <select id="edit-interval-${t.id}">
-            <option value="10000"   ${t.interval===10000   ?'selected':''}>10 seconds</option>
-            <option value="30000"   ${t.interval===30000   ?'selected':''}>30 seconds</option>
-            <option value="60000"   ${t.interval===60000   ?'selected':''}>1 minute</option>
-            <option value="300000"  ${t.interval===300000  ?'selected':''}>5 minutes</option>
-            <option value="600000"  ${t.interval===600000  ?'selected':''}>10 minutes</option>
-            <option value="1800000" ${t.interval===1800000 ?'selected':''}>30 minutes</option>
-            <option value="3600000" ${t.interval===3600000 ?'selected':''}>1 hour</option>
-            <option value="14400000"${t.interval===14400000?'selected':''}>4 hours</option>
-            <option value="21600000"${t.interval===21600000?'selected':''}>6 hours</option>
-            <option value="43200000"${t.interval===43200000?'selected':''}>12 hours</option>
-            <option value="86400000" ${t.interval===86400000 ?'selected':''}>24 hours</option>
-            <option value="259200000"${t.interval===259200000?'selected':''}>3 days</option>
-            <option value="604800000"${t.interval===604800000?'selected':''}>7 days</option>
-          </select>
-        </div>
-        <label class="ai-checkbox-row" title="When disabled, changes are still detected but no AI summary is generated">
-          <input type="checkbox" id="edit-ai-${t.id}" ${t.aiSummary !== false ? 'checked' : ''} />
-          AI summary
-        </label>
-      </div>
-      <button class="btn btn-primary" style="height:36px;padding:0 16px;font-size:13px" onclick="saveEdit('${t.id}')">Save</button>
-      <button class="btn btn-text"    style="height:36px;padding:0 12px;font-size:13px" onclick="toggleEdit(null)">Cancel</button>
-    </div>` : ''}
-    ${changeBanner}`;
-}
+    <p class="confirm-message" id="toModalMessage"></p>
+    <div class="field" style="margin-bottom:14px">
+      <label for="toIntervalSelect">Check every</label>
+      <select id="toIntervalSelect">
+        <option value="10000">10 seconds</option>
+        <option value="30000" selected>30 seconds</option>
+        <option value="60000">1 minute</option>
+        <option value="300000">5 minutes</option>
+        <option value="600000">10 minutes</option>
+        <option value="1800000">30 minutes</option>
+        <option value="3600000">1 hour</option>
+        <option value="14400000">4 hours</option>
+        <option value="21600000">6 hours</option>
+        <option value="43200000">12 hours</option>
+        <option value="86400000">24 hours</option>
+        <option value="259200000">3 days</option>
+        <option value="604800000">7 days</option>
+      </select>
+    </div>
+    <label class="ai-checkbox-row" style="margin-bottom:18px;font-size:14px">
+      <input type="checkbox" id="toAiSummary" />
+      Enable AI summary on changes
+    </label>
+    <div class="confirm-actions">
+      <button type="button" class="btn btn-text" onclick="closeTrackerOptionsModal(false)">Cancel</button>
+      <button type="button" class="btn btn-primary" id="toConfirmBtn" onclick="closeTrackerOptionsModal(true)">
+        <span class="material-icons" style="font-size:17px">add_circle</span>
+        <span id="toConfirmLabel">Add Trackers</span>
+      </button>
+    </div>
+  </div>
+</div>
 
-function updateBadge() {
-  const active = trackers.filter(t => t.active).length;
-  document.getElementById('activeCount').textContent = `${active} active`;
-}
-
-// ─── NOTIFICATIONS ────────────────────────────────────────────────────────────
-async function showBrowserNotification(title, body, url) {
-  if ('serviceWorker' in navigator && Notification.permission === 'granted') {
-    try {
-      const reg = await navigator.serviceWorker.ready;
-      await reg.showNotification(title, { body, data: { url } });
-      return;
-    } catch {}
-  }
-  try { new Notification(title, { body, icon: '/icon.svg' }); } catch {}
-}
-
-function triggerBrowserNotification(label, url) {
-  if (!currentUser?.notificationsEnabled) return;
-  if (Notification.permission === 'granted') {
-    showBrowserNotification('Watchdog: Change detected', `${label}\n${url}`, url);
-  } else if (Notification.permission !== 'denied') {
-    Notification.requestPermission();
-  }
-}
-
-let snackTimer;
-function showSnackbar(msg, type) {
-  const bar  = document.getElementById('snackbar');
-  const icon = bar.querySelector('.material-icons');
-  icon.textContent = type === 'error' ? 'error_outline' : 'notifications';
-  document.getElementById('snackbarText').textContent = msg;
-  bar.classList.add('show');
-  clearTimeout(snackTimer);
-  snackTimer = setTimeout(hideSnackbar, 5000);
-}
-function hideSnackbar() {
-  document.getElementById('snackbar').classList.remove('show');
-}
-
-// ─── HELPERS ─────────────────────────────────────────────────────────────────
-function intervalText(ms) {
-  if (ms < 60000)    return `${ms/1000}s`;
-  if (ms < 3600000)  return `${ms/60000}m`;
-  if (ms < 86400000) return `${ms/3600000}h`;
-  return `${ms/86400000}d`;
-}
-
-function timeAgo(isoString) {
-  const secs = Math.floor((Date.now() - new Date(isoString)) / 1000);
-  if (secs < 5)    return 'just now';
-  if (secs < 60)   return `${secs}s ago`;
-  const mins = Math.floor(secs / 60);
-  if (mins < 60)   return `${mins} min${mins === 1 ? '' : 's'} ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24)    return `${hrs} hr${hrs === 1 ? '' : 's'} ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days} day${days === 1 ? '' : 's'} ago`;
-}
-
-// Refresh all relative timestamps every 30 seconds
-setInterval(() => {
-  document.querySelectorAll('.tracker-time-ago[data-ts]').forEach(el => {
-    el.textContent = timeAgo(el.dataset.ts);
-  });
-}, 30000);
-
-function escHtml(str) {
-  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-// ─── CONFIRM MODAL ────────────────────────────────────────────────────────────
-function openDeleteConfirmDialog(label) {
-  const modal     = document.getElementById('confirmModal');
-  const message   = document.getElementById('confirmMessage');
-  const cancelBtn = document.getElementById('confirmCancelBtn');
-  const deleteBtn = document.getElementById('confirmDeleteBtn');
-  if (!modal || !message || !cancelBtn || !deleteBtn) return Promise.resolve(false);
-  if (confirmResolver) closeConfirmDialog(false);
-  message.textContent = `Delete ${label}? This cannot be undone.`;
-  modal.classList.add('show');
-  modal.setAttribute('aria-hidden', 'false');
-  document.body.classList.add('modal-open');
-  return new Promise(resolve => {
-    confirmResolver = resolve;
-    cancelBtn.onclick = () => closeConfirmDialog(false);
-    deleteBtn.onclick = () => closeConfirmDialog(true);
-    modal.onclick = (e) => { if (e.target === modal) closeConfirmDialog(false); };
-    confirmKeyHandler = (e) => { if (e.key === 'Escape') closeConfirmDialog(false); };
-    document.addEventListener('keydown', confirmKeyHandler);
-    setTimeout(() => cancelBtn.focus(), 0);
-  });
-}
-
-function closeConfirmDialog(confirmed) {
-  const modal = document.getElementById('confirmModal');
-  if (modal) {
-    modal.classList.remove('show');
-    modal.setAttribute('aria-hidden', 'true');
-    modal.onclick = null;
-  }
-  document.body.classList.remove('modal-open');
-  if (confirmKeyHandler) {
-    document.removeEventListener('keydown', confirmKeyHandler);
-    confirmKeyHandler = null;
-  }
-  if (confirmResolver) {
-    const resolve = confirmResolver;
-    confirmResolver = null;
-    resolve(confirmed);
-  }
-}
-
-// ─── GLOBAL ESCAPE KEY ────────────────────────────────────────────────────────
-document.addEventListener('keydown', (e) => {
-  if (e.key !== 'Escape') return;
-  if (document.getElementById('editUserOverlay')?.classList.contains('show')) {
-    closeEditUser(); return;
-  }
-  if (document.getElementById('adminOverlay')?.classList.contains('show')) {
-    closeAdminPanel(); return;
-  }
-  if (document.getElementById('profileOverlay')?.classList.contains('show')) {
-    closeProfile(); return;
-  }
-});
-
-// ─── BOOT ─────────────────────────────────────────────────────────────────────
-init();
-</script>
+<script src="/app.js"></script>
 </body>
 </html>

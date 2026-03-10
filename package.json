@@ -1,5 +1,5 @@
 {
-  "name": "watchdog",
+  "name": "watchbot",
   "version": "1.0.0",
   "main": "server/index.js",
   "scripts": {

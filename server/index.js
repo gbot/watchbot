@@ -12,7 +12,7 @@ const cookieParser = require('cookie-parser');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
-const JWT_SECRET    = process.env.JWT_SECRET || 'watchdog-fallback-secret-change-in-production';
+const JWT_SECRET    = process.env.JWT_SECRET || 'watchbot-fallback-secret-change-in-production';
 const COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 app.use(cors({ origin: true, credentials: true }));
@@ -20,10 +20,21 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, '../public')));
 
+// ─── LOGGER ──────────────────────────────────────────────────────────────────
+const _c = {
+  r: '\x1b[0m', dim: '\x1b[2m', bold: '\x1b[1m',
+  green: '\x1b[32m', yellow: '\x1b[33m', red: '\x1b[31m',
+  cyan: '\x1b[36m', blue: '\x1b[34m', magenta: '\x1b[35m',
+};
+function log(symbol, color, msg) {
+  const ts = new Date().toISOString().replace('T', ' ').slice(0, 19);
+  process.stdout.write(`${_c.dim}${ts}${_c.r}  ${color}${symbol}${_c.r}  ${msg}\n`);
+}
+
 // ─── PERSISTENCE (SQLite) ─────────────────────────────────────────────────────
 const Database = require('better-sqlite3');
 const DATA_DIR  = path.join(__dirname, '../data');
-const DB_PATH   = path.join(DATA_DIR, 'watchdog.db');
+const DB_PATH   = path.join(DATA_DIR, 'watchbot.db');
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
@@ -211,6 +222,36 @@ function extractVisibleText(html) {
     .trim();
 }
 
+// Structured extraction for AI context — preserves heading hierarchy with
+// markers and strips noisy elements (nav, footer, timestamps, sidebars) so
+// the model focuses on meaningful content rather than dynamic counters/dates.
+function extractStructuredText(html) {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<noscript[\s\S]*?<\/noscript>/gi, '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    // Strip whole noisy semantic blocks
+    .replace(/<nav[\s\S]*?<\/nav>/gi, '')
+    .replace(/<footer[\s\S]*?<\/footer>/gi, '')
+    .replace(/<aside[\s\S]*?<\/aside>/gi, '')
+    .replace(/<time[^>]*>[\s\S]*?<\/time>/gi, '')
+    // Promote headings to readable markers
+    .replace(/<h1[^>]*>/gi, '\n[H1] ').replace(/<\/h1>/gi, '\n')
+    .replace(/<h2[^>]*>/gi, '\n[H2] ').replace(/<\/h2>/gi, '\n')
+    .replace(/<h3[^>]*>/gi, '\n[H3] ').replace(/<\/h3>/gi, '\n')
+    .replace(/<h4[^>]*>/gi, '\n[H4] ').replace(/<\/h4>/gi, '\n')
+    .replace(/<h5[^>]*>/gi, '\n[H5] ').replace(/<\/h5>/gi, '\n')
+    .replace(/<h6[^>]*>/gi, '\n[H6] ').replace(/<\/h6>/gi, '\n')
+    // Block elements → newlines for readability
+    .replace(/<\/?(?:p|div|section|article|main|li|tr|blockquote|pre)[^>]*>/gi, '\n')
+    // Strip remaining tags
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 // ─── HASHING ─────────────────────────────────────────────────────────────────
 function hashContent(text) {
   return crypto.createHash('sha256').update(text).digest('hex').slice(0, 16);
@@ -221,7 +262,7 @@ async function fetchResource(url) {
   const response = await axios.get(url, {
     timeout: 15000,
     headers: {
-      'User-Agent':      'Watchdog-ChangeTracker/1.0',
+      'User-Agent':      'Watchbot-ChangeTracker/1.0',
       'Accept':          '*/*',
       'Cache-Control':   'no-cache, no-store',
       'Pragma':          'no-cache'
@@ -251,7 +292,7 @@ async function getChangeSummary(oldText, newText, url) {
         max_tokens: 300,
         messages: [{
           role:    'user',
-          content: `You are a concise change-detection assistant. Compare these two snapshots of visible webpage text and describe what changed in 1-2 plain English sentences. Be specific (new content, removed content, updated values). Do not mention HTML.\n\nURL: ${url}\n\n--- BEFORE ---\n${oldText.slice(0, 2500)}\n\n--- AFTER ---\n${newText.slice(0, 2500)}`
+          content: `You are a concise change-detection assistant. Compare these two snapshots of webpage content and describe what meaningfully changed in 1-2 plain English sentences.\n\nFocus on: headings, article titles, main content sections, featured items, key announcements.\nIgnore: timestamps, dates, comment counts, view counts, vote counts, reaction counts, "X minutes ago" style text, and other dynamic counters.\nDo not mention HTML or formatting markup.\n\nURL: ${url}\n\n--- BEFORE ---\n${oldText.slice(0, 2500)}\n\n--- AFTER ---\n${newText.slice(0, 2500)}`
         }]
       },
       {
@@ -265,7 +306,7 @@ async function getChangeSummary(oldText, newText, url) {
     );
     return res.data?.content?.[0]?.text || 'Content changed.';
   } catch (err) {
-    console.error('AI summary error:', err.message);
+    log('✗', _c.red, `AI summary error: ${err.message}`);
     return 'Content changed (AI summary unavailable).';
   }
 }
@@ -302,11 +343,12 @@ function computeDiffSnippet(oldText, newText) {
 
 async function checkTracker(tracker) {
   const now = new Date().toISOString();
-  console.log(`[${now}] Checking: ${tracker.url}`);
+  log('↻', _c.dim, `Checking  ${tracker.url}`);
 
   try {
     const { status, body } = await fetchResource(tracker.url);
-    const visibleText = extractVisibleText(body);
+    const visibleText    = extractVisibleText(body);
+    const structuredText = extractStructuredText(body);
     const hash = hashContent(visibleText);
 
     tracker.lastCheck  = now;
@@ -316,25 +358,25 @@ async function checkTracker(tracker) {
     if (tracker.lastHash == null) {
       // First check — store baseline, no alert
       tracker.lastHash = hash;
-      tracker.lastBody = visibleText;
+      tracker.lastBody = structuredText;
       tracker.status   = 'ok';
       tracker.changeSummary = null;
-      console.log(`  ✓ Baseline stored for "${tracker.label}"`);
+      log('✓', _c.green, `Baseline  "${tracker.label}"  [HTTP ${status}]`);
 
     } else if (hash !== tracker.lastHash) {
-      console.log(`  ⚡ Change detected for "${tracker.label}"${tracker.aiSummary === false ? ' (AI summary disabled)' : ' — fetching AI summary…'}`);
+      log('⚡', _c.yellow, `Changed   "${tracker.label}"  [HTTP ${status}]${tracker.aiSummary === false ? '' : '  — fetching AI summary…'}`);
 
       let summary;
       if (tracker.aiSummary === false) {
         summary = 'Content changed (AI summary disabled for this resource).';
       } else {
-        summary = await getChangeSummary(tracker.lastBody, visibleText, tracker.url);
+        summary = await getChangeSummary(tracker.lastBody, structuredText, tracker.url);
       }
 
       tracker.changeCount   = (tracker.changeCount || 0) + 1;
       tracker.status        = 'changed';
       tracker.changeSummary = summary;
-      tracker.changeSnippet = computeDiffSnippet(tracker.lastBody || '', visibleText);
+      tracker.changeSnippet = computeDiffSnippet(tracker.lastBody || '', structuredText);
 
       saveChange({
         id:           uuidv4(),
@@ -348,19 +390,19 @@ async function checkTracker(tracker) {
       });
 
       tracker.lastHash = hash;
-      tracker.lastBody = visibleText;
-      console.log(`  ✓ Recorded: ${summary}`);
+      tracker.lastBody = structuredText;
+      log('⚡', _c.yellow, `Saved     "${tracker.label}"  — ${summary.slice(0, 120)}`);
 
     } else {
       tracker.status = 'ok';
-      console.log(`  ✓ No change for "${tracker.label}"`);
+      log('·', _c.dim, `No change "${tracker.label}"  [HTTP ${status}]`);
     }
 
   } catch (err) {
     tracker.status    = 'error';
     tracker.lastCheck = now;
     tracker.error     = err.message;
-    console.error(`  ✗ Error checking "${tracker.label}": ${err.message}`);
+    log('✗', _c.red, `Error     "${tracker.label}"  — ${err.message}`);
   }
 
   saveTrackers(trackers);
@@ -377,7 +419,7 @@ function startTrackerTimer(tracker) {
     const t = trackers.find(t => t.id === tracker.id);
     if (t && t.active) await checkTracker(t);
   }, tracker.interval);
-  console.log(`Scheduled "${tracker.label}" every ${tracker.interval / 1000}s`);
+  log('⏱', _c.blue, `Scheduled "${tracker.label}" every ${tracker.interval / 1000}s`);
 }
 
 function stopTrackerTimer(id) {
@@ -405,7 +447,7 @@ app.get('/api/events', authMiddleware, (req, res) => {
 
   const clientId = uuidv4();
   sseClients.set(clientId, { res, userId: req.userId });
-  console.log(`SSE client connected: ${clientId} (user: ${req.username})`);
+  log('⇄', _c.cyan, `SSE connected    ${req.username}  (${clientId.slice(0, 8)})`);
 
   const userTrackers = trackers
     .filter(t => t.userId === req.userId)
@@ -414,23 +456,24 @@ app.get('/api/events', authMiddleware, (req, res) => {
 
   req.on('close', () => {
     sseClients.delete(clientId);
-    console.log(`SSE client disconnected: ${clientId}`);
+    log('⇄', _c.dim, `SSE disconnected ${req.username}  (${clientId.slice(0, 8)})`);
   });
 });
 
 // ─── AUTH MIDDLEWARE ─────────────────────────────────────────────────────────
 function authMiddleware(req, res, next) {
-  const token = req.cookies?.watchdog_auth;
+  const token = req.cookies?.watchbot_auth;
   if (!token) return res.status(401).json({ error: 'Not authenticated' });
   try {
     const payload = jwt.verify(token, JWT_SECRET);
     const user = db.prepare('SELECT id, role, disabled FROM users WHERE id = ?').get(payload.userId);
     if (!user) {
-      res.clearCookie('watchdog_auth');
+      res.clearCookie('watchbot_auth');
       return res.status(401).json({ error: 'Account no longer exists' });
     }
-    if (user.disabled) {
-      res.clearCookie('watchdog_auth');
+    // Only block disabled accounts for their own sessions, not for admin impersonation
+    if (user.disabled && !payload.impersonatedBy) {
+      res.clearCookie('watchbot_auth');
       return res.status(403).json({ error: 'Account is disabled' });
     }
     req.userId   = payload.userId;
@@ -474,7 +517,7 @@ app.post('/api/auth/register', async (req, res) => {
     .run(user.id, user.username, user.email, user.passwordHash, user.createdAt);
 
   const token = jwt.sign({ userId: user.id, username: user.username, role: 'user' }, JWT_SECRET, { expiresIn: '7d' });
-  res.cookie('watchdog_auth', token, { httpOnly: true, sameSite: 'lax', maxAge: COOKIE_MAX_AGE });
+  res.cookie('watchbot_auth', token, { httpOnly: true, sameSite: 'lax', maxAge: COOKIE_MAX_AGE });
   res.status(201).json({ id: user.id, username: user.username, role: 'user', notificationsEnabled: true });
 });
 
@@ -493,18 +536,18 @@ app.post('/api/auth/login', async (req, res) => {
   if (user.disabled) return res.status(403).json({ error: 'Your account has been deactivated. Please contact an administrator.' });
 
   const token = jwt.sign({ userId: user.id, username: user.username, role: user.role || 'user' }, JWT_SECRET, { expiresIn: '7d' });
-  res.cookie('watchdog_auth', token, { httpOnly: true, sameSite: 'lax', maxAge: COOKIE_MAX_AGE });
+  res.cookie('watchbot_auth', token, { httpOnly: true, sameSite: 'lax', maxAge: COOKIE_MAX_AGE });
   res.json({ id: user.id, username: user.username, role: user.role || 'user', notificationsEnabled: user.notificationsEnabled !== 0 });
 });
 
 app.post('/api/auth/logout', (req, res) => {
-  res.clearCookie('watchdog_auth');
-  res.clearCookie('watchdog_restore');
+  res.clearCookie('watchbot_auth');
+  res.clearCookie('watchbot_restore');
   res.json({ success: true });
 });
 
 app.get('/api/auth/me', (req, res) => {
-  const token = req.cookies?.watchdog_auth;
+  const token = req.cookies?.watchbot_auth;
   if (!token) return res.status(401).json({ error: 'Not authenticated' });
   try {
     const payload = jwt.verify(token, JWT_SECRET);
@@ -536,7 +579,7 @@ app.delete('/api/auth/profile', authMiddleware, async (req, res) => {
   db.prepare('DELETE FROM changes WHERE trackerId IN (SELECT id FROM trackers WHERE userId = ?)').run(req.userId);
   db.prepare('DELETE FROM trackers WHERE userId = ?').run(req.userId);
   db.prepare('DELETE FROM users WHERE id = ?').run(req.userId);
-  res.clearCookie('watchdog_auth');
+  res.clearCookie('watchbot_auth');
   res.json({ success: true });
 });
 
@@ -717,36 +760,113 @@ app.post('/api/admin/impersonate/:id', adminMiddleware, (req, res) => {
   if (target.disabled) return res.status(400).json({ error: 'Cannot impersonate a disabled account' });
 
   // Save the admin's current token so they can return later
-  const adminToken = req.cookies.watchdog_auth;
-  res.cookie('watchdog_restore', adminToken, { httpOnly: true, sameSite: 'lax', maxAge: COOKIE_MAX_AGE });
+  const adminToken = req.cookies.watchbot_auth;
+  res.cookie('watchbot_restore', adminToken, { httpOnly: true, sameSite: 'lax', maxAge: COOKIE_MAX_AGE });
 
   const impersonateToken = jwt.sign(
     { userId: target.id, username: target.username, role: target.role || 'user',
       impersonatedBy: { id: req.userId, username: req.username } },
     JWT_SECRET, { expiresIn: '7d' }
   );
-  res.cookie('watchdog_auth', impersonateToken, { httpOnly: true, sameSite: 'lax', maxAge: COOKIE_MAX_AGE });
+  res.cookie('watchbot_auth', impersonateToken, { httpOnly: true, sameSite: 'lax', maxAge: COOKIE_MAX_AGE });
   res.json({ id: target.id, username: target.username, role: target.role || 'user',
     notificationsEnabled: target.notificationsEnabled !== 0,
     impersonatedBy: { id: req.userId, username: req.username } });
 });
 
 app.post('/api/admin/stop-impersonate', (req, res) => {
-  const restoreToken = req.cookies?.watchdog_restore;
+  const restoreToken = req.cookies?.watchbot_restore;
   if (!restoreToken) return res.status(400).json({ error: 'No impersonation session to restore' });
   try {
     jwt.verify(restoreToken, JWT_SECRET);
   } catch {
-    res.clearCookie('watchdog_restore');
-    res.clearCookie('watchdog_auth');
+    res.clearCookie('watchbot_restore');
+    res.clearCookie('watchbot_auth');
     return res.status(401).json({ error: 'Restore token invalid or expired' });
   }
-  res.cookie('watchdog_auth', restoreToken, { httpOnly: true, sameSite: 'lax', maxAge: COOKIE_MAX_AGE });
-  res.clearCookie('watchdog_restore');
+  res.cookie('watchbot_auth', restoreToken, { httpOnly: true, sameSite: 'lax', maxAge: COOKIE_MAX_AGE });
+  res.clearCookie('watchbot_restore');
   const payload = jwt.decode(restoreToken);
   const user = db.prepare('SELECT role, notificationsEnabled FROM users WHERE id = ?').get(payload.userId);
   res.json({ id: payload.userId, username: payload.username, role: user?.role || 'superadmin',
     notificationsEnabled: user?.notificationsEnabled !== 0 });
+});
+
+// ─── AI RESOURCE FINDER ───────────────────────────────────────────────────────
+app.post('/api/ai/find-resources', authMiddleware, async (req, res) => {
+  const { query } = req.body;
+  if (!query?.trim()) return res.status(400).json({ error: 'query is required' });
+
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return res.status(503).json({ error: 'AI features require ANTHROPIC_API_KEY to be configured on the server.' });
+
+  try {
+    const response = await axios.post(
+      'https://api.anthropic.com/v1/messages',
+      {
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 2048,
+        messages: [{
+          role: 'user',
+          content: `You are a web resource discovery assistant. Given a topic the user wants to monitor for updates, suggest 20 to 50 real, high-quality, publicly accessible URLs that would give meaningful, ongoing updates about that topic.
+
+Topic: "${query.trim().slice(0, 200)}"
+
+Return ONLY a valid JSON array. No markdown fences, no explanation — just the raw JSON array.
+
+Each item must have exactly these fields:
+- "url": full HTTPS URL (must be real and publicly accessible)
+- "label": short display name (e.g. "Reuters – Donald Trump")
+- "description": one sentence describing what this page tracks
+- "category": exactly one of: "News", "Official", "Social", "Data/API", "Blog", "Forum", "Video", "Other"
+
+Prioritise:
+- Major news sources with topic-specific tag or search pages
+- Official websites or government pages where relevant
+- Real-time data feeds or JSON/RSS endpoints
+- High-signal social or community sources
+
+Return 20–50 results. Return only the JSON array, no other text.`
+        }]
+      },
+      {
+        headers: {
+          'x-api-key':         apiKey,
+          'anthropic-version': '2023-06-01',
+          'content-type':      'application/json'
+        },
+        timeout: 30000
+      }
+    );
+
+    const text = response.data?.content?.[0]?.text || '[]';
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) return res.status(500).json({ error: 'AI returned an unexpected format' });
+
+    let raw;
+    try { raw = JSON.parse(jsonMatch[0]); } catch { return res.status(500).json({ error: 'AI response could not be parsed' }); }
+    if (!Array.isArray(raw)) return res.status(500).json({ error: 'AI response was not an array' });
+
+    const allowed = new Set(['News', 'Official', 'Social', 'Data/API', 'Blog', 'Forum', 'Video', 'Other']);
+    const suggestions = raw
+      .filter(s => {
+        if (!s.url || typeof s.url !== 'string') return false;
+        try { const u = new URL(s.url.trim()); return u.protocol === 'https:'; } catch { return false; }
+      })
+      .map(s => ({
+        url:         s.url.trim(),
+        label:       String(s.label || s.url).slice(0, 120),
+        description: String(s.description || '').slice(0, 300),
+        category:    allowed.has(s.category) ? s.category : 'Other'
+      }))
+      .slice(0, 50);
+
+    log('✦', _c.magenta, `AI finder  "${query.trim()}"  → ${suggestions.length} suggestions`);
+    res.json({ suggestions, query: query.trim() });
+  } catch (err) {
+    log('✗', _c.red, `AI finder error: ${err.message}`);
+    res.status(500).json({ error: 'AI search failed. Please try again.' });
+  }
 });
 
 // ─── API ROUTES ───────────────────────────────────────────────────────────────
@@ -879,7 +999,11 @@ app.get('/api/changes', authMiddleware, (req, res) => {
 
 // ─── START ────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`\n🐕 Watchdog running at http://localhost:${PORT}`);
-  console.log(`   AI summaries: ${process.env.ANTHROPIC_API_KEY ? '✓ enabled' : '✗ set ANTHROPIC_API_KEY to enable'}\n`);
+  const userCount   = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
+  const activeCount = trackers.filter(t => t.active).length;
+  console.log(`\n${_c.bold}${_c.green}🤖 Watchbot${_c.r}  listening on ${_c.cyan}http://localhost:${PORT}${_c.r}`);
+  console.log(`   ${_c.dim}Database : ${DB_PATH}${_c.r}`);
+  console.log(`   ${_c.dim}Users    : ${userCount}  |  Trackers : ${trackers.length} total, ${activeCount} active${_c.r}`);
+  console.log(`   ${_c.dim}AI       : ${process.env.ANTHROPIC_API_KEY ? '✓ enabled' : '✗ set ANTHROPIC_API_KEY to enable'}${_c.r}\n`);
   trackers.forEach(t => { if (t.active) startTrackerTimer(t); });
 });
