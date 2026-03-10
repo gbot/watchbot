@@ -84,7 +84,8 @@ let trackerFilter    = '';
 let showChangedOnly  = false;
 let showActiveOnly   = false;
 let showAIOnly       = false;
-let showLockedOnly   = false;
+let showFlaggedOnly  = false;
+let _tcFlagFilter    = new Set();   // per-tracker "show flagged only" filter
 
 // Admin panel — search & pagination state
 const ADMIN_PAGE_SIZE      = 25;
@@ -113,7 +114,7 @@ async function init() {
 
   if (meRes?.ok) {
     currentUser = await meRes.json();
-    if (siteSettings.maintenanceMode && currentUser.role !== 'superadmin') {
+    if (siteSettings.maintenanceMode && currentUser.role !== 'admin') {
       // Logged-in non-admin hit maintenance — log them out silently then show overlay
       await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
       currentUser = null;
@@ -223,7 +224,7 @@ function showApp() {
     adminBtn.style.display = 'none'; // hide admin button while impersonating
   } else {
     banner.style.display = 'none';
-    adminBtn.style.display = currentUser.role === 'superadmin' ? 'flex' : 'none';
+    adminBtn.style.display = currentUser.role === 'admin' ? 'flex' : 'none';
   }
   if (currentUser.notificationsEnabled && Notification.permission === 'default') {
     Notification.requestPermission();
@@ -236,7 +237,7 @@ function showApp() {
   showChangedOnly = document.getElementById('showChangedOnlyChk')?.checked ?? false;
   showActiveOnly  = document.getElementById('showActiveOnlyChk')?.checked  ?? false;
   showAIOnly      = document.getElementById('showAIOnlyChk')?.checked      ?? false;
-  showLockedOnly  = document.getElementById('showLockedOnlyChk')?.checked  ?? false;
+  showFlaggedOnly = document.getElementById('showFlaggedOnlyChk')?.checked ?? false;
   trackerFilter   = (document.getElementById('trackerSearch')?.value ?? '').trim().toLowerCase();
   connectSSE();
 }
@@ -506,7 +507,7 @@ function renderAdminUsersTable(users) {
         <td>${u.id === currentUser.id ? '' : `<input type="checkbox" data-usel="${u.id}" ${adminUsersSelected.has(u.id) ? 'checked' : ''} onchange="adminUserSelectToggle('${u.id}', this.checked)" style="cursor:pointer;accent-color:var(--primary)">`}</td>
         <td><strong>${escHtml(u.username)}</strong></td>
         <td>${u.email ? escHtml(u.email) : '<span style="color:var(--on-surface-light)">—</span>'}</td>
-        <td><span class="admin-role-badge admin-role-${u.role === 'superadmin' ? 'superadmin' : 'user'}">${u.role === 'superadmin' ? 'Super Admin' : 'User'}</span></td>
+        <td><span class="admin-role-badge admin-role-${u.role === 'admin' ? 'admin' : 'user'}">${u.role === 'admin' ? 'Admin' : 'User'}</span></td>
         <td>${u.trackerCount}</td>
         <td>${u.id === currentUser.id ? '—' : `<input type="number" min="0" value="${u.trackerLimit ?? ''}" placeholder="∞"
           style="width:56px;padding:3px 6px;border:1px solid var(--divider);border-radius:6px;font-size:12px;background:var(--surface)"
@@ -1412,7 +1413,6 @@ async function checkAll() {
     );
   } finally {
     btn.disabled = false;
-    btn.title = 'Check all now';
     btn.innerHTML = '<span class="material-icons" style="font-size:20px">refresh</span>';
   }
 }
@@ -1472,12 +1472,15 @@ function _tcBuildHTML(t, cache) {
   let html = `<div class="tc-header">
     <span class="material-icons" style="font-size:16px;flex-shrink:0;color:var(--on-surface-medium)">history</span>
     <span class="tc-title">History</span>
-    <button class="tc-icon-btn tc-icon-btn-delete" data-tip="Delete all history" onclick="_tcDeleteHistory('${t.id}')" style="margin-left:16px">
+    <button class="tc-icon-btn tc-icon-btn-delete" data-tip="Delete all unflagged history" onclick="_tcDeleteHistory('${t.id}')" style="margin-left:16px">
       <span class="material-icons">delete_outline</span>
     </button>
-    ${showUnreadBadge ? `<span class="tc-unread-badge">${badgeLabel}</span>` : ''}
+    <button class="tc-icon-btn tc-flag-filter-btn${_tcFlagFilter.has(t.id) ? ' tc-flag-filter-btn-active' : ''}" data-tip="${_tcFlagFilter.has(t.id) ? 'Show all entries' : 'Show flagged only'}" onclick="_tcToggleFlagFilter('${t.id}')">
+      <span class="material-icons">${_tcFlagFilter.has(t.id) ? 'flag' : 'outlined_flag'}</span>
+    </button>
+    <span class="tc-header-hotspot" onclick="_tcToggleHistory('${t.id}')"></span>
     ${showUnreadBadge && unreadCount > 0 ? `<button class="btn btn-text tc-mark-all-read-btn" onclick="_tcDismissAll('${t.id}')">Mark all read</button>` : ''}
-    <span style="flex:1"></span>
+    ${showUnreadBadge ? `<span class="tc-unread-badge" style="margin-right:8px">${badgeLabel}</span>` : ''}
     <button class="tc-icon-btn tc-toggle-history-btn" data-tip="${toggleTitle}" onclick="_tcToggleHistory('${t.id}')">
       <span class="material-icons tc-toggle-btn-icon">${toggleIcon}</span>
     </button>
@@ -1516,11 +1519,13 @@ function _tcBuildHTML(t, cache) {
 
   // Cache is loaded — render stacked history entries (newest first).
   // Apply active filter to entries too.
+  const perTrackerFlagFilter = _tcFlagFilter.has(t.id);
   const visibleItems = cache.items.filter(i => {
-    if (!showChangedOnly && !showLockedOnly) return true;
+    if (perTrackerFlagFilter)                  return !!i.flagged;
+    if (!showChangedOnly && !showFlaggedOnly)  return true;
     // Union: entry is shown if it satisfies any active filter
     if (showChangedOnly && !i.dismissed) return true;
-    if (showLockedOnly  && i.locked)     return true;
+    if (showFlaggedOnly  && i.flagged)   return true;
     return false;
   });
 
@@ -1529,15 +1534,15 @@ function _tcBuildHTML(t, cache) {
     const entrySoft   = !!item.soft;
     const hasSnippet  = !!item.snippet;
     const dateStr     = new Date(item.detectedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-    html += `<div class="tc-entry${entryUnread ? ' tc-entry-unread' : ' tc-entry-read'}${item.locked ? ' tc-entry-locked' : ''}${entrySoft && !item.locked ? ' tc-entry-soft' : ''}">
+    html += `<div class="tc-entry${entryUnread ? ' tc-entry-unread' : ' tc-entry-read'}${item.flagged ? ' tc-entry-flagged' : ''}${entrySoft && !item.flagged ? ' tc-entry-soft' : ''}">
       <div class="tc-entry-row">
         ${entryUnread ? `<span class="tc-unread-dot" data-tip="Unread"></span>` : '<span class="tc-read-dot" data-tip="Read"></span>'}
         <div class="tc-entry-meta">${timeAgo(item.detectedAt)} &middot; ${dateStr}</div>
         ${entrySoft ? `<span class="tc-soft-chip">no sig. change</span>` : ''}
         <span style="flex:1"></span>
         ${entryUnread ? `<button class="btn btn-text tc-mark-read-btn" onclick="_tcDismissChange('${item.id}','${t.id}')">Mark read</button>` : `<span class="tc-read-label">${entrySoft ? 'Read (auto)' : 'Read'}</span>`}
-        <button class="tc-icon-btn tc-lock-btn${item.locked ? ' tc-lock-btn-active' : ''}" data-tip="${item.locked ? 'Unlock this change' : 'Lock this change'}" onclick="_tcLockChange('${item.id}','${t.id}')">
-          <span class="material-icons">${item.locked ? 'lock' : 'lock_open'}</span>
+        <button class="tc-icon-btn tc-flag-btn${item.flagged ? ' tc-flag-btn-active' : ''}" data-tip="${item.flagged ? 'Unflag this change' : 'Flag this change'}" onclick="_tcFlagChange('${item.id}','${t.id}')">
+          <span class="material-icons">${item.flagged ? 'flag' : 'outlined_flag'}</span>
         </button>
       </div>
       <div class="diff-summary">${renderSummary(item.summary || '')}</div>
@@ -1551,7 +1556,7 @@ function _tcBuildHTML(t, cache) {
     </div>` : ''}`;
   });
 
-  if (!showChangedOnly && !showLockedOnly && cache.total > cache.items.length) {
+  if (!showChangedOnly && !showFlaggedOnly && !_tcFlagFilter.has(t.id) && cache.total > cache.items.length) {
     const remaining = Math.min(5, cache.total - cache.items.length);
     html += `<button class="btn btn-text tc-load-more" onclick="_tcLoadMore('${t.id}')">Load ${remaining} more change${remaining !== 1 ? 's' : ''}</button>`;
   }
@@ -1626,25 +1631,25 @@ async function _tcDismissAll(trackerId) {
   }
 }
 
-async function _tcLockChange(changeId, trackerId) {
+async function _tcFlagChange(changeId, trackerId) {
   const cache = _tcCache[trackerId];
   const item  = cache?.items.find(i => i.id === changeId);
   if (!item) return;
-  const wasLocked = !!item.locked;
+  const wasFlagged = !!item.flagged;
   // Optimistic update
-  item.locked = wasLocked ? 0 : 1;
+  item.flagged = wasFlagged ? 0 : 1;
   _tcUpdate(trackerId);
   try {
-    const res = await fetch(`/api/changes/${changeId}/lock`, { method: 'POST' });
+    const res = await fetch(`/api/changes/${changeId}/flag`, { method: 'POST' });
     if (!res.ok) throw new Error();
-    const { locked } = await res.json();
-    item.locked = locked ? 1 : 0;
+    const { flagged } = await res.json();
+    item.flagged = flagged ? 1 : 0;
     _tcUpdate(trackerId);
   } catch {
     // Revert optimistic update
-    item.locked = wasLocked ? 1 : 0;
+    item.flagged = wasFlagged ? 1 : 0;
     _tcUpdate(trackerId);
-    showSnackbar('Failed to update lock', 'error');
+    showSnackbar('Failed to update flag', 'error');
   }
 }
 
@@ -1662,6 +1667,15 @@ async function _tcDismissChange(changeId, trackerId) {
     if (item) { item.dismissed = 0; _tcUpdate(trackerId); }
     showSnackbar('Failed to mark change as read', 'error');
   }
+}
+
+function _tcToggleFlagFilter(id) {
+  if (_tcFlagFilter.has(id)) {
+    _tcFlagFilter.delete(id);
+  } else {
+    _tcFlagFilter.add(id);
+  }
+  _tcUpdate(id);
 }
 
 function _tcToggleHistory(id) {
@@ -1737,15 +1751,23 @@ function _tcCollapseAll() {
 async function _tcDeleteHistory(id) {
   const t = trackers.find(t => t.id === id);
   if (!t) return;
-  const confirmed = await openDeleteConfirmDialog('all unlocked change history for this tracker (locked entries will be kept)', 'Delete history?');
+  const confirmed = await openDeleteConfirmDialog('all unflagged change history for this tracker (flagged entries will be kept)', 'Delete history?');
   if (!confirmed) return;
   try {
     const res = await fetch(`/api/trackers/${id}/changes`, { method: 'DELETE' });
     if (!res.ok) throw new Error();
-    delete _tcCache[id];
+    // Remove all unlocked entries from cache; keep locked ones so the UI
+    // reflects the real state immediately without waiting for SSE.
+    if (_tcCache[id]?.items) {
+      _tcCache[id].items = _tcCache[id].items.filter(i => i.flagged);
+      _tcCache[id].total = _tcCache[id].items.length;
+      _tcUpdate(id);
+    } else {
+      delete _tcCache[id];
+    }
     _tcCollapsed.delete(id);
     _tcCollapseSave();
-    // SSE broadcast from server will push updated tracker (changeCount:0) → re-render
+    // SSE broadcast from server will push updated tracker (changeCount) → re-render
   } catch {
     showSnackbar('Failed to delete history', 'error');
   }
@@ -1773,7 +1795,7 @@ async function dismissAll() {
   // Optimistic: mark all cached change items as dismissed immediately
   changed.forEach(t => {
     if (_tcCache[t.id]?.items) {
-      _tcCache[t.id].items.forEach(i => { if (!i.locked) i.dismissed = 1; });
+      _tcCache[t.id].items.forEach(i => { if (!i.flagged) i.dismissed = 1; });
       _tcUpdate(t.id);
     }
   });
@@ -1800,19 +1822,19 @@ function renderTrackers() {
         !(t.label || '').toLowerCase().includes(trackerFilter) &&
         !(t.url   || '').toLowerCase().includes(trackerFilter)) return false;
     // Unread / locked filters: use loaded cache for precision; fall back to tracker-level counters
-    if (showChangedOnly || showLockedOnly) {
+    if (showChangedOnly || showFlaggedOnly) {
       const cache = _tcCache[t.id];
       if (cache?.loaded) {
         // Tracker visible if any entry satisfies any active filter (OR)
         const hasMatch = cache.items.some(i =>
-          (showChangedOnly && !i.dismissed) || (showLockedOnly && i.locked)
+          (showChangedOnly && !i.dismissed) || (showFlaggedOnly && i.flagged)
         );
         if (!hasMatch) return false;
       } else {
         // Cache not yet loaded — use coarse proxy flags (OR)
         if (!(
           (showChangedOnly && t.status === 'changed') ||
-          (showLockedOnly  && t.lockedCount > 0)
+          (showFlaggedOnly  && t.flaggedCount > 0)
         )) return false;
       }
     }
@@ -1824,7 +1846,7 @@ function renderTrackers() {
   if (countEl) {
     if (trackers.length === 0) {
       countEl.textContent = '';
-    } else if (trackerFilter || showChangedOnly || showActiveOnly || showAIOnly || showLockedOnly) {
+    } else if (trackerFilter || showChangedOnly || showActiveOnly || showAIOnly || showFlaggedOnly) {
       countEl.textContent = `${filtered.length} of ${trackers.length} shown`;
     } else {
       countEl.textContent = `${trackers.length} tracker${trackers.length !== 1 ? 's' : ''}`;
@@ -1900,7 +1922,7 @@ function clearAllFilters() {
   showChangedOnly = false;
   showActiveOnly  = false;
   showAIOnly      = false;
-  showLockedOnly  = false;
+  showFlaggedOnly = false;
   const search = document.getElementById('trackerSearch');
   if (search) search.value = '';
   const changedChk = document.getElementById('showChangedOnlyChk');
@@ -1909,8 +1931,8 @@ function clearAllFilters() {
   if (activeChk) activeChk.checked = false;
   const aiChk = document.getElementById('showAIOnlyChk');
   if (aiChk) aiChk.checked = false;
-  const lockedChk = document.getElementById('showLockedOnlyChk');
-  if (lockedChk) lockedChk.checked = false;
+  const flaggedChk = document.getElementById('showFlaggedOnlyChk');
+  if (flaggedChk) flaggedChk.checked = false;
   renderTrackers();
 }
 
@@ -1934,8 +1956,8 @@ function setShowAIOnly(checked) {
   renderTrackers();
 }
 
-function setShowLockedOnly(checked) {
-  showLockedOnly = checked;
+function setShowFlaggedOnly(checked) {
+  showFlaggedOnly = checked;
   renderTrackers();
 }
 

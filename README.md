@@ -8,15 +8,15 @@ A self-hosted web change tracker. Add URLs, set a polling interval, and WatchBot
 
 - **Watch any URL** — monitors visible text content and detects changes on a configurable interval
 - **AI change summaries** — uses Claude (Anthropic) to summarise what changed in plain English
-- **AI resource finder** — describe a topic and get 30 curated URL suggestions to monitor
+- **WatchBot Resource Finder** — describe a topic and get 30 curated URL suggestions to monitor
 - **Real-time updates** — live push via Server-Sent Events; no page refresh needed
 - **Browser notifications** — opt-in push notifications via Service Worker
 - **Change history** — stacked per-tracker log of all detected changes with unread indicators
-- **Lock changes** — pin individual change entries so they are never deleted or marked read
+- **Flag changes** — pin individual change entries so they are never deleted; flagged entries survive bulk history deletes
 - **Expand / Collapse all** — one-click toggle for all change history panels from the toolbar
 - **Drag-to-reorder** — organise your WatchBots in any order
 - **User accounts** — JWT-based auth with registration and login
-- **Super-admin panel** — manage users, roles, tracker limits, impersonate users for debugging
+- **Admin panel** — manage users, roles, tracker limits, impersonate users for debugging
 - **Dark mode** — follows system preference (Material-style UI)
 
 ---
@@ -87,7 +87,7 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## First Run
 
-On first start, a **super-admin account** is automatically created. Check the server console output for the credentials. **Change the password immediately** via the account settings after logging in.
+On first start, an **admin account** is automatically created. Check the server console output for the credentials. **Change the password immediately** via the account settings after logging in.
 
 ---
 

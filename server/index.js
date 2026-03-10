@@ -131,6 +131,8 @@ db.exec(`
 // Migrations for existing DBs
 try { db.prepare('ALTER TABLE changes ADD COLUMN dismissed INTEGER DEFAULT 0').run(); } catch {}
 try { db.prepare('ALTER TABLE changes ADD COLUMN locked   INTEGER DEFAULT 0').run(); } catch {}
+try { db.prepare('ALTER TABLE changes ADD COLUMN flagged  INTEGER DEFAULT 0').run(); } catch {}
+try { db.prepare('UPDATE changes SET flagged = locked WHERE locked = 1 AND flagged = 0').run(); } catch {}
 try { db.prepare('ALTER TABLE changes ADD COLUMN soft      INTEGER DEFAULT 0').run(); } catch {}
 try { db.prepare('ALTER TABLE changes ADD COLUMN snippet   TEXT').run(); } catch {}
 try { db.prepare('ALTER TABLE trackers ADD COLUMN emailNotify INTEGER DEFAULT 0').run(); } catch {}
@@ -169,9 +171,9 @@ function rowToTracker(row) {
 function loadTrackers() {
   const rows    = db.prepare('SELECT * FROM trackers ORDER BY position ASC').all();
   const lockMap = {};
-  db.prepare('SELECT trackerId, COUNT(*) as c FROM changes WHERE locked = 1 GROUP BY trackerId')
+  db.prepare('SELECT trackerId, COUNT(*) as c FROM changes WHERE flagged = 1 GROUP BY trackerId')
     .all().forEach(r => { lockMap[r.trackerId] = r.c; });
-  return rows.map(row => ({ ...rowToTracker(row), lockedCount: lockMap[row.id] || 0 }));
+  return rows.map(row => ({ ...rowToTracker(row), flaggedCount: lockMap[row.id] || 0 }));
 }
 
 function loadChanges() {
@@ -353,13 +355,13 @@ function saveChange(change) {
     INSERT INTO changes (id, trackerId, trackerLabel, url, detectedAt, summary, oldHash, newHash, dismissed, soft, snippet)
     VALUES (@id, @trackerId, @trackerLabel, @url, @detectedAt, @summary, @oldHash, @newHash, @dismissed, @soft, @snippet)
   `).run({ dismissed: 0, soft: 0, snippet: null, ...change, snippet: snippetJson });
-  // Only prune when the unlocked pool actually exceeds the cap — avoids a
+  // Only prune when the unflagged pool actually exceeds the cap — avoids a
   // redundant DELETE subquery scan on every save when well under the limit.
-  const { c } = db.prepare('SELECT COUNT(*) as c FROM changes WHERE locked = 0').get();
+  const { c } = db.prepare('SELECT COUNT(*) as c FROM changes WHERE flagged = 0').get();
   if (c > 500) {
     db.prepare(`
-      DELETE FROM changes WHERE locked = 0 AND id NOT IN (
-        SELECT id FROM changes WHERE locked = 0 ORDER BY detectedAt DESC LIMIT 500
+      DELETE FROM changes WHERE flagged = 0 AND id NOT IN (
+        SELECT id FROM changes WHERE flagged = 0 ORDER BY detectedAt DESC LIMIT 500
       )
     `).run();
   }
@@ -380,18 +382,18 @@ db.prepare(`
 
 let trackers = loadTrackers();
 
-// ─── SEED SUPER-ADMIN ────────────────────────────────────────────────────────
+// ─── SEED ADMIN ─────────────────────────────────────────────────────────────
 (async () => {
   const existing = db.prepare('SELECT id FROM users WHERE username = ?').get('wpnadmin');
   if (!existing) {
     const hash = await bcrypt.hash('vladimir', 12);
     db.prepare(`INSERT INTO users (id, username, passwordHash, createdAt, role)
-                VALUES (?, 'wpnadmin', ?, ?, 'superadmin')`).
+                VALUES (?, 'wpnadmin', ?, ?, 'admin')`).
       run(uuidv4(), hash, new Date().toISOString());
-    console.log('  ✓ Super-admin account created (wpnadmin)');
+    console.log('  ✓ Admin account created (wpnadmin)');
   } else {
     // Ensure the role is set correctly even if the account pre-existed
-    db.prepare('UPDATE users SET role = ? WHERE username = ?').run('superadmin', 'wpnadmin');
+    db.prepare('UPDATE users SET role = ? WHERE username = ?').run('admin', 'wpnadmin');
   }
 })();
 
@@ -774,7 +776,7 @@ async function checkTracker(tracker) {
       }
 
     } else {
-      // Only move back to 'ok' if there are no unread (undismissed, unlocked)
+      // Only move back to 'ok' if there are no unread (undismissed, unflagged)
       // changes waiting for the user — otherwise a routine no-change check
       // would silently reset the 'changed' status and break the 'New only' filter.
       const undismissed = db.prepare(
@@ -904,8 +906,8 @@ function authMiddleware(req, res, next) {
     }
     req.userId   = payload.userId;
     req.username = payload.username;
-    req.role     = payload.role || 'user';
-    if (getSetting('maintenanceMode', '0') === '1' && req.role !== 'superadmin') {
+    req.role     = user.role || 'user';
+    if (getSetting('maintenanceMode', '0') === '1' && req.role !== 'admin') {
       return res.status(503).json({ error: 'The site is currently undergoing maintenance. Please try again later.' });
     }
     next();
@@ -916,7 +918,7 @@ function authMiddleware(req, res, next) {
 
 function adminMiddleware(req, res, next) {
   authMiddleware(req, res, () => {
-    if (req.role !== 'superadmin') return res.status(403).json({ error: 'Forbidden' });
+    if (req.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
     next();
   });
 }
@@ -1002,7 +1004,7 @@ app.get('/api/auth/me', (req, res) => {
     const user = db.prepare('SELECT role, disabled, notificationsEnabled, hideAiFinder, hideAddTracker, trackerLimit FROM users WHERE id = ?').get(payload.userId);
     if (!user || user.disabled) return res.status(401).json({ error: 'Not authenticated' });
     const role = user.role || 'user';
-    if (getSetting('maintenanceMode', '0') === '1' && role !== 'superadmin')
+    if (getSetting('maintenanceMode', '0') === '1' && role !== 'admin')
       return res.status(503).json({ error: 'System maintenance in progress.' });
     res.json({ id: payload.userId, username: payload.username, role,
       notificationsEnabled: user.notificationsEnabled !== 0,
@@ -1162,7 +1164,7 @@ app.post('/api/admin/users', adminMiddleware, async (req, res) => {
     return res.status(400).json({ error: 'Username must be at least 3 characters' });
   if (password.length < 6)
     return res.status(400).json({ error: 'Password must be at least 6 characters' });
-  const allowedRoles = ['user', 'superadmin'];
+  const allowedRoles = ['user', 'admin'];
   const assignedRole = allowedRoles.includes(role) ? role : 'user';
 
   const existing = db.prepare('SELECT id FROM users WHERE LOWER(username) = LOWER(?)').get(username.trim());
@@ -1229,7 +1231,7 @@ app.patch('/api/admin/users/:id', adminMiddleware, (req, res) => {
   }
 
   if (role !== undefined) {
-    const allowedRoles = ['user', 'superadmin'];
+    const allowedRoles = ['user', 'admin'];
     if (!allowedRoles.includes(role)) return res.status(400).json({ error: 'Invalid role' });
     db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, targetId);
   }
@@ -1326,7 +1328,7 @@ app.post('/api/admin/stop-impersonate', (req, res) => {
   res.clearCookie('watchbot_restore');
   const payload = jwt.decode(restoreToken);
   const user = db.prepare('SELECT role, notificationsEnabled FROM users WHERE id = ?').get(payload.userId);
-  res.json({ id: payload.userId, username: payload.username, role: user?.role || 'superadmin',
+  res.json({ id: payload.userId, username: payload.username, role: user?.role || 'admin',
     notificationsEnabled: user?.notificationsEnabled !== 0 });
 });
 
@@ -1613,16 +1615,16 @@ app.post('/api/changes/:id/dismiss', authMiddleware, (req, res) => {
   res.json({ success: true });
 });
 
-app.post('/api/changes/:id/lock', authMiddleware, (req, res) => {
-  const change = db.prepare('SELECT trackerId, locked FROM changes WHERE id = ?').get(req.params.id);
+app.post('/api/changes/:id/flag', authMiddleware, (req, res) => {
+  const change = db.prepare('SELECT trackerId, flagged FROM changes WHERE id = ?').get(req.params.id);
   if (!change) return res.status(404).json({ error: 'Not found' });
   const tracker = trackers.find(t => t.id === change.trackerId && t.userId === req.userId);
   if (!tracker) return res.status(403).json({ error: 'Forbidden' });
-  const newLocked = change.locked ? 0 : 1;
-  db.prepare('UPDATE changes SET locked = ? WHERE id = ?').run(newLocked, req.params.id);
-  tracker.lockedCount = Math.max((tracker.lockedCount || 0) + (newLocked === 1 ? 1 : -1), 0);
+  const newFlagged = change.flagged ? 0 : 1;
+  db.prepare('UPDATE changes SET flagged = ? WHERE id = ?').run(newFlagged, req.params.id);
+  tracker.flaggedCount = Math.max((tracker.flaggedCount || 0) + (newFlagged === 1 ? 1 : -1), 0);
   _saveOneTracker(tracker);
-  res.json({ locked: newLocked === 1 });
+  res.json({ flagged: newFlagged === 1 });
 });
 
 app.get('/api/changes', authMiddleware, (req, res) => {
@@ -1650,7 +1652,7 @@ app.get('/api/trackers/:id/changes', authMiddleware, (req, res) => {
   const offset = Math.max(parseInt(req.query.offset) || 0, 0);
   const total  = db.prepare('SELECT COUNT(*) as c FROM changes WHERE trackerId = ?').get(req.params.id).c;
   const rows  = db.prepare(
-    'SELECT id, detectedAt, summary, dismissed, locked, soft, snippet FROM changes WHERE trackerId = ? ORDER BY detectedAt DESC LIMIT ? OFFSET ?'
+    'SELECT id, detectedAt, summary, dismissed, flagged, soft, snippet FROM changes WHERE trackerId = ? ORDER BY detectedAt DESC LIMIT ? OFFSET ?'
   ).all(req.params.id, limit, offset);
   const items = rows.map(r => ({ ...r, snippet: r.snippet ? JSON.parse(r.snippet) : null }));
   res.json({ items, total, offset, limit });
@@ -1659,15 +1661,15 @@ app.get('/api/trackers/:id/changes', authMiddleware, (req, res) => {
 app.delete('/api/trackers/:id/changes', authMiddleware, (req, res) => {
   const tracker = trackers.find(t => t.id === req.params.id && t.userId === req.userId);
   if (!tracker) return res.status(404).json({ error: 'Not found' });
-  db.prepare('DELETE FROM changes WHERE trackerId = ? AND locked = 0').run(req.params.id);
-  const remainingLocked = db.prepare('SELECT COUNT(*) as c FROM changes WHERE trackerId = ?').get(req.params.id).c;
-  tracker.changeCount = remainingLocked;
-  if (remainingLocked === 0) {
+  db.prepare('DELETE FROM changes WHERE trackerId = ? AND flagged = 0').run(req.params.id);
+  const remainingFlagged = db.prepare('SELECT COUNT(*) as c FROM changes WHERE trackerId = ?').get(req.params.id).c;
+  tracker.changeCount = remainingFlagged;
+  if (remainingFlagged === 0) {
     tracker.changeSummary = null;
     tracker.changeSnippet = null;
   }
-  // Only reset 'changed' status if no unread, unlocked changes remain
-  const stillUnread = db.prepare('SELECT COUNT(*) as c FROM changes WHERE trackerId = ? AND dismissed = 0 AND locked = 0').get(req.params.id).c;
+  // Only reset 'changed' status if no unread, unflagged changes remain
+  const stillUnread = db.prepare('SELECT COUNT(*) as c FROM changes WHERE trackerId = ? AND dismissed = 0 AND flagged = 0').get(req.params.id).c;
   if (stillUnread === 0 && tracker.status === 'changed') tracker.status = 'ok';
   saveTrackers(trackers);
   res.json({ success: true });
