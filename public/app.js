@@ -1628,11 +1628,14 @@ function _tcUpdate(trackerId, scrollToBottom = false) {
   container.innerHTML = _tcBuildHTML(t, _tcCache[trackerId]);
   const newBody = container.querySelector('.tc-body');
   if (newBody) {
-    if (scrollToBottom) {
-      newBody.scrollTop = newBody.scrollHeight;
-    } else if (savedScroll > 0) {
-      newBody.scrollTop = savedScroll;
-    }
+    // Use rAF so the restore runs after the browser handles focus-loss scrolling
+    requestAnimationFrame(() => {
+      if (scrollToBottom) {
+        newBody.scrollTop = newBody.scrollHeight;
+      } else if (savedScroll > 0) {
+        newBody.scrollTop = savedScroll;
+      }
+    });
   }
   if (panelWasOpen) {
     const newPanel = document.getElementById(`diff-panel-${trackerId}`);
