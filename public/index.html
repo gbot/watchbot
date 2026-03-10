@@ -346,7 +346,7 @@
     align-items: center;
     justify-content: center;
     padding: 24px;
-    z-index: 300;
+    z-index: 500;
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.18s ease;
@@ -472,7 +472,139 @@
   .profile-msg.success { color: var(--success); }
   .profile-msg.error   { color: var(--error); }
 
+  /* ADMIN PANEL */
+  .admin-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(32,33,36,0.52);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    z-index: 360;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+  }
+  .admin-overlay.show { opacity: 1; pointer-events: auto; }
+  .admin-dialog {
+    width: min(860px, 100%);
+    max-height: 88vh;
+    background: var(--surface);
+    border-radius: 20px;
+    box-shadow: var(--elevation-3);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transform: translateY(8px) scale(0.98);
+    transition: transform 0.2s ease;
+  }
+  .admin-overlay.show .admin-dialog { transform: translateY(0) scale(1); }
+  .admin-dialog-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid var(--divider);
+    flex-shrink: 0;
+  }
+  .admin-dialog-header h3 { font-size: 18px; font-weight: 500; }
+  .admin-badge {
+    font-size: 11px; font-weight: 700;
+    background: #fce8e6; color: var(--error);
+    border-radius: 20px; padding: 2px 8px;
+    letter-spacing: 0.4px; text-transform: uppercase;
+  }
+  .admin-tabs {
+    display: flex;
+    border-bottom: 2px solid var(--divider);
+    padding: 0 24px;
+    flex-shrink: 0;
+  }
+  .admin-tab {
+    background: none; border: none;
+    padding: 10px 16px 12px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px; font-weight: 500;
+    color: var(--on-surface-medium);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .admin-tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+  .admin-tab:hover:not(.active) { color: var(--on-surface); }
+  .admin-body { flex: 1; overflow-y: auto; padding: 20px 24px; }
+  .admin-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .admin-table th {
+    text-align: left;
+    font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    color: var(--on-surface-medium);
+    border-bottom: 2px solid var(--divider);
+    padding: 6px 10px 8px;
+  }
+  .admin-table td {
+    padding: 10px 10px;
+    border-bottom: 1px solid var(--divider);
+    vertical-align: middle;
+  }
+  .admin-table tr:last-child td { border-bottom: none; }
+  .admin-table tr:hover td { background: var(--background); }
+  .admin-role-badge {
+    font-size: 11px; font-weight: 600;
+    padding: 2px 8px; border-radius: 20px;
+    text-transform: uppercase; letter-spacing: 0.3px;
+  }
+  .admin-role-superadmin { background: #e8f0fe; color: var(--primary); }
+  .admin-role-user { background: var(--background); color: var(--on-surface-medium); }
+  .admin-disabled-badge {
+    font-size: 11px; font-weight: 600;
+    padding: 2px 8px; border-radius: 20px;
+    text-transform: uppercase; letter-spacing: 0.3px;
+    background: #fce8e6; color: var(--error);
+  }
+  /* Toggle switch */
+  .toggle-switch {
+    position: relative; display: inline-flex; align-items: center; gap: 8px;
+    cursor: pointer; user-select: none; font-size: 13px;
+  }
+  .toggle-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .toggle-track {
+    width: 34px; height: 20px; border-radius: 10px;
+    background: var(--on-surface-light);
+    transition: background 0.2s;
+    flex-shrink: 0;
+    position: relative;
+  }
+  .toggle-track::after {
+    content: ''; position: absolute; top: 3px; left: 3px;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: white; transition: left 0.2s;
+  }
+  .toggle-switch input:checked + .toggle-track { background: var(--primary); }
+  .toggle-switch input:checked + .toggle-track::after { left: 17px; }
+  .admin-url {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px; color: var(--on-surface-medium);
+    max-width: 260px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    display: block;
+  }
+  .admin-empty {
+    text-align: center;
+    padding: 40px;
+    color: var(--on-surface-light);
+    font-size: 14px;
+  }
+
   body.modal-open { overflow: hidden; }
+  body.auth-visible .topbar,
+  body.auth-visible .main { filter: blur(4px); pointer-events: none; user-select: none; }
 
   /* AUTH OVERLAY */
   .auth-overlay {
@@ -663,6 +795,9 @@
   <span class="topbar-badge" id="activeCount">0 active</span>
   <div class="user-area" id="userArea" style="display:none">
     <span class="user-name" id="userDisplay"></span>
+    <button class="btn-icon" id="adminPanelBtn" onclick="openAdminPanel()" title="Admin panel" style="display:none;color:var(--error)">
+      <span class="material-icons" style="font-size:20px">admin_panel_settings</span>
+    </button>
     <button class="btn-icon" onclick="openProfile()" title="Account settings" style="color:var(--on-surface-medium)">
       <span class="material-icons" style="font-size:20px">manage_accounts</span>
     </button>
@@ -783,6 +918,87 @@
   </div>
 </div>
 
+<!-- ADMIN PANEL -->
+<div class="admin-overlay" id="adminOverlay" aria-hidden="true">
+  <div class="admin-dialog" role="dialog" aria-modal="true" aria-labelledby="adminTitle">
+    <div class="admin-dialog-header">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span class="material-icons" style="color:var(--error);font-size:22px">admin_panel_settings</span>
+        <h3 id="adminTitle">Admin Panel</h3>
+        <span class="admin-badge">Super Admin</span>
+      </div>
+      <button class="btn-icon" onclick="closeAdminPanel()" aria-label="Close">
+        <span class="material-icons" style="font-size:20px">close</span>
+      </button>
+    </div>
+    <div class="admin-tabs">
+      <button class="admin-tab active" data-tab="users"    onclick="switchAdminTab('users')">Users</button>
+      <button class="admin-tab"        data-tab="trackers" onclick="switchAdminTab('trackers')">All Trackers</button>
+    </div>
+    <div class="admin-body">
+      <!-- Users tab -->
+      <div id="adminUsersTab">
+        <!-- Add user form -->
+        <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;padding:12px 0 16px;border-bottom:1px solid var(--divider);margin-bottom:4px">
+          <div class="field" style="flex:1;min-width:120px;gap:4px">
+            <label style="font-size:11px;font-weight:600;color:var(--on-surface-medium);text-transform:uppercase;letter-spacing:0.5px">Username</label>
+            <input type="text" id="adminNewUsername" placeholder="username" autocomplete="off"
+              style="padding:7px 10px;border:1px solid var(--divider);border-radius:8px;font-size:13px;background:var(--surface);color:var(--on-surface)" />
+          </div>
+          <div class="field" style="flex:1;min-width:120px;gap:4px">
+            <label style="font-size:11px;font-weight:600;color:var(--on-surface-medium);text-transform:uppercase;letter-spacing:0.5px">Password</label>
+            <input type="password" id="adminNewPassword" placeholder="min 6 chars" autocomplete="new-password"
+              style="padding:7px 10px;border:1px solid var(--divider);border-radius:8px;font-size:13px;background:var(--surface);color:var(--on-surface)" />
+          </div>
+          <div class="field" style="min-width:100px;gap:4px">
+            <label style="font-size:11px;font-weight:600;color:var(--on-surface-medium);text-transform:uppercase;letter-spacing:0.5px">Role</label>
+            <select id="adminNewRole"
+              style="padding:7px 10px;border:1px solid var(--divider);border-radius:8px;font-size:13px;background:var(--surface);color:var(--on-surface)">
+              <option value="user">User</option>
+              <option value="superadmin">Super Admin</option>
+            </select>
+          </div>
+          <button class="btn btn-primary" style="height:36px;white-space:nowrap" onclick="adminAddUser()">
+            <span class="material-icons" style="font-size:16px">person_add</span> Add user
+          </button>
+        </div>
+        <p class="profile-msg" id="adminAddUserMsg" style="margin:0 0 8px"></p>
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>Username</th>
+              <th>Email</th>
+              <th>Role</th>
+              <th>Trackers</th>
+              <th>Limit</th>
+              <th>Status</th>
+              <th>Joined</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="adminUsersBody"></tbody>
+        </table>
+      </div>
+      <!-- Trackers tab -->
+      <div id="adminTrackersTab" style="display:none">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>Label</th>
+              <th>URL</th>
+              <th>Owner</th>
+              <th>Status</th>
+              <th>Changes</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="adminTrackersBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- PROFILE MODAL -->
 <div class="profile-overlay" id="profileOverlay" aria-hidden="true">
   <div class="profile-dialog" role="dialog" aria-modal="true" aria-labelledby="profileTitle">
@@ -830,10 +1046,39 @@
       <p class="profile-msg" id="profilePwMsg"></p>
       <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="saveProfilePassword()">Change password</button>
     </div>
+    <div class="profile-divider"></div>
+
+    <!-- Notifications -->
+    <div class="profile-section">
+      <div class="profile-section-title">Notifications</div>
+      <label class="toggle-switch" style="font-size:14px;color:var(--on-surface)">
+        <input type="checkbox" id="profileNotifications" onchange="saveProfileNotifications(this.checked)">
+        <span class="toggle-track"></span>
+        Browser notifications
+      </label>
+      <p style="font-size:12px;color:var(--on-surface-medium);margin:0">Show a browser notification when a tracker detects a change.</p>
+      <button class="btn btn-text" style="align-self:flex-start;padding:4px 0" onclick="sendTestNotification()">
+        <span class="material-icons" style="font-size:16px">notifications_active</span> Send test notification
+      </button>
+    </div>
+
+    <div class="profile-divider"></div>
+
+    <!-- Delete account -->
+    <div class="profile-section">
+      <div class="profile-section-title" style="color:var(--error)">Danger zone</div>
+      <p style="font-size:13px;color:var(--on-surface-medium);margin:0">Permanently delete your account and all your trackers. This cannot be undone.</p>
+      <div class="field">
+        <label for="profileDeletePw">Confirm with your password</label>
+        <input type="password" id="profileDeletePw" placeholder="Enter your password" autocomplete="current-password" />
+      </div>
+      <p class="profile-msg" id="profileDeleteMsg"></p>
+      <button class="btn" style="background:#fce8e6;color:var(--error);width:100%;justify-content:center;border:1px solid #f5c6c3" onclick="deleteAccount()">
+        <span class="material-icons" style="font-size:16px">delete_forever</span> Delete my account
+      </button>
+    </div>
   </div>
 </div>
-
-<!-- SNACKBAR -->
 <div class="notification-bar" id="snackbar">
   <span class="material-icons">notifications</span>
   <span id="snackbarText">Change detected!</span>
@@ -866,6 +1111,9 @@ let confirmKeyHandler = null;
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 async function init() {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  }
   try {
     const res = await fetch('/api/auth/me');
     if (res.ok) {
@@ -877,9 +1125,6 @@ async function init() {
   } catch {
     showAuthOverlay('login');
   }
-  if (Notification.permission !== 'granted' && Notification.permission !== 'denied') {
-    Notification.requestPermission();
-  }
 }
 
 // ─── AUTH UI ──────────────────────────────────────────────────────────────────
@@ -887,7 +1132,7 @@ function showAuthOverlay(tab = 'login') {
   const overlay = document.getElementById('authOverlay');
   overlay.classList.add('show');
   overlay.setAttribute('aria-hidden', 'false');
-  document.body.classList.add('modal-open');
+  document.body.classList.add('modal-open', 'auth-visible');
   switchAuthTab(tab);
   setTimeout(() => {
     const el = document.getElementById(tab === 'login' ? 'loginUsername' : 'registerUsername');
@@ -899,7 +1144,7 @@ function hideAuthOverlay() {
   const overlay = document.getElementById('authOverlay');
   overlay.classList.remove('show');
   overlay.setAttribute('aria-hidden', 'true');
-  document.body.classList.remove('modal-open');
+  document.body.classList.remove('modal-open', 'auth-visible');
 }
 
 function switchAuthTab(tab) {
@@ -915,6 +1160,11 @@ function showApp() {
   hideAuthOverlay();
   document.getElementById('userDisplay').textContent = currentUser.username;
   document.getElementById('userArea').style.display  = 'flex';
+  const adminBtn = document.getElementById('adminPanelBtn');
+  adminBtn.style.display = currentUser.role === 'superadmin' ? 'flex' : 'none';
+  if (currentUser.notificationsEnabled && Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
   connectSSE();
 }
 
@@ -974,15 +1224,170 @@ async function handleLogout() {
   showAuthOverlay('login');
 }
 
+// ─── ADMIN PANEL ──────────────────────────────────────────────────────────────
+let adminCurrentTab = 'users';
+
+async function openAdminPanel() {
+  switchAdminTab('users');
+  const overlay = document.getElementById('adminOverlay');
+  overlay.classList.add('show');
+  overlay.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('modal-open');
+  await loadAdminTab('users');
+}
+
+function closeAdminPanel() {
+  const overlay = document.getElementById('adminOverlay');
+  overlay.classList.remove('show');
+  overlay.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('modal-open');
+}
+
+function switchAdminTab(tab) {
+  adminCurrentTab = tab;
+  document.querySelectorAll('.admin-tab').forEach(t =>
+    t.classList.toggle('active', t.dataset.tab === tab)
+  );
+  document.getElementById('adminUsersTab').style.display    = tab === 'users'    ? '' : 'none';
+  document.getElementById('adminTrackersTab').style.display = tab === 'trackers' ? '' : 'none';
+  loadAdminTab(tab);
+}
+
+async function loadAdminTab(tab) {
+  if (tab === 'users') {
+    const res  = await fetch('/api/admin/users');
+    if (!res.ok) return;
+    const users = await res.json();
+    const tbody = document.getElementById('adminUsersBody');
+    if (!users.length) { tbody.innerHTML = `<tr><td colspan="8" class="admin-empty">No users found.</td></tr>`; return; }
+    tbody.innerHTML = users.map(u => `
+      <tr>
+        <td><strong>${escHtml(u.username)}</strong></td>
+        <td>${u.email ? escHtml(u.email) : '<span style="color:var(--on-surface-light)">—</span>'}</td>
+        <td><span class="admin-role-badge admin-role-${u.role === 'superadmin' ? 'superadmin' : 'user'}">${u.role === 'superadmin' ? 'Super Admin' : 'User'}</span></td>
+        <td>${u.trackerCount}</td>
+        <td>${u.id === currentUser.id ? '—' : `<input type="number" min="0" value="${u.trackerLimit ?? ''}" placeholder="∞"
+          style="width:56px;padding:3px 6px;border:1px solid var(--divider);border-radius:6px;font-size:12px;background:var(--surface)"
+          onchange="adminSetTrackerLimit('${u.id}', this.value)" title="Max trackers (blank = unlimited)" />`}</td>
+        <td>${u.id === currentUser.id ? '' : `<label class="toggle-switch" title="${u.disabled ? 'Enable' : 'Disable'} account">
+          <input type="checkbox" ${u.disabled ? '' : 'checked'} onchange="adminToggleDisabled('${u.id}', !this.checked)">
+          <span class="toggle-track"></span>
+        </label>`}</td>
+        <td style="color:var(--on-surface-medium);font-size:12px">${new Date(u.createdAt).toLocaleDateString()}</td>
+        <td>${u.id === currentUser.id ? '' : `<button class="btn-icon" style="color:var(--error)" title="Delete user" onclick="adminDeleteUser('${u.id}','${escHtml(u.username)}')"><span class="material-icons" style="font-size:18px">person_remove</span></button>`}</td>
+      </tr>`).join('');
+  } else {
+    const res  = await fetch('/api/admin/trackers');
+    if (!res.ok) return;
+    const all  = await res.json();
+    // Fetch user list to resolve userId → username
+    const usersRes = await fetch('/api/admin/users');
+    const users    = usersRes.ok ? await usersRes.json() : [];
+    const userMap  = Object.fromEntries(users.map(u => [u.id, u.username]));
+    const tbody    = document.getElementById('adminTrackersBody');
+    if (!all.length) { tbody.innerHTML = `<tr><td colspan="6" class="admin-empty">No trackers found.</td></tr>`; return; }
+    tbody.innerHTML = all.map(t => `
+      <tr>
+        <td>${escHtml(t.label || t.url)}</td>
+        <td><span class="admin-url" title="${escHtml(t.url)}">${escHtml(t.url)}</span></td>
+        <td style="font-size:12px;color:var(--on-surface-medium)">${escHtml(userMap[t.userId] || t.userId)}</td>
+        <td><span class="chip chip-${t.status === 'changed' ? 'changed' : t.status === 'error' ? 'error' : t.active ? 'ok' : 'paused'}" style="font-size:11px">${t.active ? t.status : 'paused'}</span></td>
+        <td style="text-align:center">${t.changeCount || 0}</td>
+        <td><button class="btn-icon" style="color:var(--error)" title="Delete tracker" onclick="adminDeleteTracker('${t.id}','${escHtml(t.label || t.url)}')"><span class="material-icons" style="font-size:18px">delete_outline</span></button></td>
+      </tr>`).join('');
+  }
+}
+
+async function adminAddUser() {
+  const username = document.getElementById('adminNewUsername').value.trim();
+  const password = document.getElementById('adminNewPassword').value;
+  const role     = document.getElementById('adminNewRole').value;
+  const msgEl    = document.getElementById('adminAddUserMsg');
+  msgEl.textContent = '';
+  msgEl.className   = 'profile-msg';
+
+  if (!username || !password) {
+    msgEl.textContent = 'Username and password are required.';
+    msgEl.classList.add('error');
+    return;
+  }
+
+  const res  = await fetch('/api/admin/users', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ username, password, role }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    msgEl.textContent = data.error || 'Failed to create user.';
+    msgEl.classList.add('error');
+  } else {
+    msgEl.textContent = `User "${data.username}" created.`;
+    msgEl.classList.add('success');
+    document.getElementById('adminNewUsername').value = '';
+    document.getElementById('adminNewPassword').value = '';
+    document.getElementById('adminNewRole').value = 'user';
+    loadAdminTab('users');
+  }
+}
+
+async function adminDeleteUser(id, username) {
+  const ok = await openDeleteConfirmDialog(`user "${username}" and all their trackers`);
+  if (!ok) return;
+  const res = await fetch(`/api/admin/users/${id}`, { method: 'DELETE' });
+  if (res.ok) { showSnackbar(`User ${username} deleted.`); loadAdminTab('users'); }
+  else { const d = await res.json(); showSnackbar(d.error || 'Delete failed', 'error'); }
+}
+
+async function adminToggleDisabled(id, disable) {
+  const res = await fetch(`/api/admin/users/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ disabled: disable }),
+  });
+  if (res.ok) {
+    showSnackbar(disable ? 'Account disabled.' : 'Account enabled.');
+    loadAdminTab('users');
+  } else {
+    const d = await res.json();
+    showSnackbar(d.error || 'Update failed', 'error');
+    loadAdminTab('users'); // revert toggle in UI
+  }
+}
+
+async function adminSetTrackerLimit(id, value) {
+  const limit = value === '' ? null : parseInt(value);
+  const res = await fetch(`/api/admin/users/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ trackerLimit: limit }),
+  });
+  if (res.ok) showSnackbar('Tracker limit updated.');
+  else { const d = await res.json(); showSnackbar(d.error || 'Update failed', 'error'); }
+}
+
+async function adminDeleteTracker(id, label) {
+  const ok = await openDeleteConfirmDialog(`tracker "${label}"`);
+  if (!ok) return;
+  const res = await fetch(`/api/admin/trackers/${id}`, { method: 'DELETE' });
+  if (res.ok) { showSnackbar('Tracker deleted.'); loadAdminTab('trackers'); }
+  else { const d = await res.json(); showSnackbar(d.error || 'Delete failed', 'error'); }
+}
+
 // ─── PROFILE ──────────────────────────────────────────────────────────────────
 async function openProfile() {
   document.getElementById('profileEmailMsg').textContent = '';
   document.getElementById('profilePwMsg').textContent    = '';
   document.getElementById('profileEmailMsg').className   = 'profile-msg';
   document.getElementById('profilePwMsg').className      = 'profile-msg';
-  document.getElementById('profileCurrentPw').value      = '';
-  document.getElementById('profileNewPw').value          = '';
-  document.getElementById('profileConfirmPw').value      = '';
+  document.getElementById('profileCurrentPw').value = '';
+  document.getElementById('profileNewPw').value      = '';
+  document.getElementById('profileConfirmPw').value  = '';
+  document.getElementById('profileDeletePw').value   = '';
+  if (document.getElementById('profileDeleteMsg')) {
+    document.getElementById('profileDeleteMsg').textContent = '';
+    document.getElementById('profileDeleteMsg').className   = 'profile-msg';
+  }
   document.getElementById('profileUsernameDisplay').textContent = currentUser?.username || '';
 
   try {
@@ -990,6 +1395,7 @@ async function openProfile() {
     if (res.ok) {
       const profile = await res.json();
       document.getElementById('profileEmail').value = profile.email || '';
+      document.getElementById('profileNotifications').checked = profile.notificationsEnabled !== false;
     }
   } catch {}
 
@@ -1079,12 +1485,86 @@ async function saveProfilePassword() {
   }
 }
 
+function sendTestNotification() {
+  if (Notification.permission === 'granted') {
+    showBrowserNotification('Watchdog: Notifications working!', 'Browser notifications are enabled and working correctly.', '/');
+  } else if (Notification.permission === 'denied') {
+    showSnackbar('Notifications are blocked in your browser settings.', 'error');
+  } else {
+    Notification.requestPermission().then(p => {
+      if (p === 'granted') sendTestNotification();
+    });
+  }
+}
+
+async function saveProfileNotifications(enabled) {
+  try {
+    await fetch('/api/auth/profile', {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ notificationsEnabled: enabled }),
+    });
+    if (currentUser) currentUser.notificationsEnabled = enabled;
+    if (enabled && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+      Notification.requestPermission();
+    }
+  } catch {}
+}
+
+async function deleteAccount() {
+  const pw    = document.getElementById('profileDeletePw').value;
+  const msgEl = document.getElementById('profileDeleteMsg');
+  msgEl.textContent = '';
+  msgEl.className   = 'profile-msg';
+  if (!pw) {
+    msgEl.textContent = 'Please enter your password to confirm.';
+    msgEl.classList.add('error');
+    return;
+  }
+  const ok = await openDeleteConfirmDialog('your account and all your trackers');
+  if (!ok) return;
+  try {
+    const res  = await fetch('/api/auth/profile', {
+      method:  'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ password: pw }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      msgEl.textContent = data.error || 'Failed to delete account';
+      msgEl.classList.add('error');
+    } else {
+      closeProfile();
+      if (evtSource) { evtSource.close(); evtSource = null; }
+      currentUser = null;
+      trackers    = [];
+      renderTrackers();
+      updateBadge();
+      document.getElementById('userArea').style.display = 'none';
+      showAuthOverlay('login');
+    }
+  } catch {
+    msgEl.textContent = 'Connection error.';
+    msgEl.classList.add('error');
+  }
+}
+
 // ─── SSE ──────────────────────────────────────────────────────────────────────
 function connectSSE() {
   if (evtSource) evtSource.close();
   evtSource = new EventSource('/api/events');
   evtSource.onmessage = (e) => {
     const data = JSON.parse(e.data);
+    if (data.type === 'force_logout') {
+      if (evtSource) { evtSource.close(); evtSource = null; }
+      currentUser = null;
+      trackers    = [];
+      renderTrackers();
+      updateBadge();
+      document.getElementById('userArea').style.display = 'none';
+      showAuthOverlay('login');
+      return;
+    }
     if (data.type === 'init' || data.type === 'update') {
       const prevStatuses = Object.fromEntries(trackers.map(t => [t.id, t.status]));
       if (data.type === 'init') {
@@ -1174,7 +1654,7 @@ async function addTracker() {
 async function removeTracker(id) {
   const t = trackers.find(t => t.id === id);
   if (!t) return;
-  const shouldDelete = await openDeleteConfirmDialog(t.label);
+  const shouldDelete = await openDeleteConfirmDialog(`tracker "${t.label}"`); 
   if (!shouldDelete) return;
   try {
     const res = await fetch(`/api/trackers/${id}`, { method: 'DELETE' });
@@ -1512,12 +1992,21 @@ function updateBadge() {
 }
 
 // ─── NOTIFICATIONS ────────────────────────────────────────────────────────────
+async function showBrowserNotification(title, body, url) {
+  if ('serviceWorker' in navigator && Notification.permission === 'granted') {
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      await reg.showNotification(title, { body, data: { url } });
+      return;
+    } catch {}
+  }
+  try { new Notification(title, { body, icon: '/icon.svg' }); } catch {}
+}
+
 function triggerBrowserNotification(label, url) {
+  if (!currentUser?.notificationsEnabled) return;
   if (Notification.permission === 'granted') {
-    new Notification('Watchdog: Change detected', {
-      body: `${label}\n${url}`,
-      icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%231a73e8"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>'
-    });
+    showBrowserNotification('Watchdog: Change detected', `${label}\n${url}`, url);
   } else if (Notification.permission !== 'denied') {
     Notification.requestPermission();
   }
@@ -1576,7 +2065,7 @@ function openDeleteConfirmDialog(label) {
   const deleteBtn = document.getElementById('confirmDeleteBtn');
   if (!modal || !message || !cancelBtn || !deleteBtn) return Promise.resolve(false);
   if (confirmResolver) closeConfirmDialog(false);
-  message.textContent = `Delete tracker "${label}"? This cannot be undone.`;
+  message.textContent = `Delete ${label}? This cannot be undone.`;
   modal.classList.add('show');
   modal.setAttribute('aria-hidden', 'false');
   document.body.classList.add('modal-open');
