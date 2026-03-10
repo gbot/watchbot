@@ -1945,6 +1945,15 @@ function renderTrackers() {
     [...list.querySelectorAll('.diff-panel.open')].map(el => el.id)
   );
 
+  // Save tc-body scroll positions so they survive the innerHTML rebuild
+  const savedScrolls = new Map();
+  list.querySelectorAll('[id^="tc-history-"]').forEach(el => {
+    const body = el.querySelector('.tc-body');
+    if (body && body.scrollTop > 0) {
+      savedScrolls.set(el.id.replace('tc-history-', ''), body.scrollTop);
+    }
+  });
+
   list.innerHTML = '';
   filtered.forEach(t => {
     const el = document.createElement('div');
@@ -1953,6 +1962,11 @@ function renderTrackers() {
     el.draggable = false;
     el.innerHTML = trackerHTML(t);
     list.appendChild(el);
+    // Restore scroll immediately after element is in DOM
+    if (savedScrolls.has(t.id)) {
+      const body = el.querySelector('.tc-body');
+      if (body) body.scrollTop = savedScrolls.get(t.id);
+    }
   });
 
   // Kick off history fetches for trackers with changes that aren't cached yet
