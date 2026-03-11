@@ -1275,7 +1275,8 @@ function connectSSE() {
       return;
     }
     if (data.type === 'init' || data.type === 'update') {
-      const prevStatuses = Object.fromEntries(trackers.map(t => [t.id, t.status]));
+      const prevStatuses     = Object.fromEntries(trackers.map(t => [t.id, t.status]));
+      const prevChangeCounts = Object.fromEntries(trackers.map(t => [t.id, t.changeCount || 0]));
       if (data.type === 'init') {
         // Full replace on initial load
         trackers = data.trackers;
@@ -1290,19 +1291,27 @@ function connectSSE() {
         data.trackers.forEach(t => { if (!existingIds.has(t.id)) trackers.unshift(t); });
       }
       if (data.type === 'update') {
-        // Invalidate cache for newly-changed trackers BEFORE rendering so that
-        // renderTrackers() sees an unloaded cache and triggers _tcFetch immediately.
+        // Invalidate cache when a tracker gains a new change — either a fresh
+        // transition to 'changed', or an additional change while already 'changed'
+        // (e.g. a new check fires while a dismiss is in-flight, leaving the cache
+        // stale with all-dismissed items that would incorrectly hide the tracker).
         trackers.forEach(t => {
-          if (t.status === 'changed' && prevStatuses[t.id] !== 'changed') {
-            delete _tcCache[t.id];
-          }
+          const isNewChange = t.status === 'changed' && (
+            prevStatuses[t.id] !== 'changed' ||
+            (t.changeCount || 0) > prevChangeCounts[t.id]
+          );
+          if (isNewChange) delete _tcCache[t.id];
         });
       }
       renderTrackers();
       updateBadge();
       if (data.type === 'update') {
         trackers.forEach(t => {
-          if (t.status === 'changed' && prevStatuses[t.id] !== 'changed') {
+          const isNewChange = t.status === 'changed' && (
+            prevStatuses[t.id] !== 'changed' ||
+            (t.changeCount || 0) > prevChangeCounts[t.id]
+          );
+          if (isNewChange) {
             showSnackbar(`🔔 Change detected: ${t.label}`);
             triggerBrowserNotification(t.label, t.url);
           }

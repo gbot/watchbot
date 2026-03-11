@@ -732,8 +732,10 @@ async function checkTracker(tracker) {
       let summary;
       if (preflightSoft) {
         summary = 'No significant content changes detected.';
-      } else if (tracker.aiSummary === false || getSetting('aiEnabled', '1') === '0') {
-        summary = 'Content changed.';
+      } else if (tracker.aiSummary === false) {
+        summary = 'Content changed. (AI summary disabled for this tracker)';
+      } else if (getSetting('aiEnabled', '1') === '0') {
+        summary = 'Content changed. (AI summary disabled globally)';
       } else {
         summary = await getChangeSummary(tracker.lastBody, structuredText, tracker.url);
       }
