@@ -30,6 +30,10 @@
     <button class="btn-icon" id="adminPanelBtn" onclick="openAdminPanel()" data-tip="Admin panel" style="display:none;color:var(--error)">
       <span class="material-icons" style="font-size:20px">admin_panel_settings</span>
     </button>
+    <button class="btn-icon" id="profilesBtn" onclick="openProfiles()" data-tip="Profiles" style="color:var(--on-surface-medium);position:relative">
+      <span class="material-icons" style="font-size:20px">layers</span>
+      <span class="topbar-profile-name" id="topbarProfileName"></span>
+    </button>
     <button class="btn-icon" onclick="openProfile()" data-tip="Account settings" style="color:var(--on-surface-medium)">
       <span class="material-icons" style="font-size:20px">manage_accounts</span>
     </button>
@@ -808,5 +812,45 @@
 </div>
 
 <script src="/app.js"></script>
+
+<!-- PROFILES DIALOG -->
+<div class="profile-overlay" id="profilesOverlay" aria-hidden="true">
+  <div class="profile-dialog" role="dialog" aria-modal="true" aria-labelledby="profilesTitle" style="width:min(520px,100%)">
+    <div class="profile-dialog-header">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span class="material-icons" style="color:var(--primary)">layers</span>
+        <h3 id="profilesTitle" style="font-size:18px;font-weight:500;letter-spacing:-0.1px">Profiles</h3>
+      </div>
+      <button class="btn-icon" onclick="closeProfiles()" aria-label="Close">
+        <span class="material-icons" style="font-size:20px">close</span>
+      </button>
+    </div>
+
+    <div class="profile-section">
+      <p style="font-size:13px;color:var(--on-surface-medium);margin:0 0 14px">
+        Profiles let you manage separate sets of WatchBots. Switch between up to 10 profiles instantly.
+        The <strong>Default</strong> profile cannot be renamed or deleted.
+      </p>
+      <div id="profilesList" style="display:flex;flex-direction:column;gap:8px"></div>
+    </div>
+
+    <div class="profile-divider"></div>
+
+    <div class="profile-section" id="profilesCreateSection">
+      <div class="profile-section-title">Create new profile</div>
+      <div style="display:flex;gap:8px;align-items:flex-start">
+        <div class="field" style="flex:1;margin:0">
+          <input type="text" id="newProfileName" placeholder="Profile name (max 50 chars)" maxlength="50" autocomplete="off"
+            onkeydown="if(event.key==='Enter')createProfile()" />
+        </div>
+        <button class="btn btn-primary" onclick="createProfile()" style="white-space:nowrap;flex-shrink:0">
+          <span class="material-icons" style="font-size:17px">add</span> Add
+        </button>
+      </div>
+      <p class="profile-msg" id="profilesCreateMsg" style="margin-top:6px"></p>
+      <p style="font-size:12px;color:var(--on-surface-medium);margin:6px 0 0" id="profilesCountNote"></p>
+    </div>
+  </div>
+</div>
 </body>
 </html>

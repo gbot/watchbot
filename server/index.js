@@ -151,13 +151,22 @@ try { db.exec('ALTER TABLE users ADD COLUMN emailVerified      INTEGER NOT NULL 
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
-    id           TEXT PRIMARY KEY,
-    username     TEXT UNIQUE NOT NULL,
-    passwordHash TEXT NOT NULL,
-    createdAt    TEXT NOT NULL,
-    email        TEXT,
-    role         TEXT NOT NULL DEFAULT 'user',
-    emailVerified INTEGER NOT NULL DEFAULT 0
+    id                    TEXT PRIMARY KEY,
+    username              TEXT UNIQUE NOT NULL,
+    passwordHash          TEXT NOT NULL,
+    createdAt             TEXT NOT NULL,
+    email                 TEXT,
+    role                  TEXT    NOT NULL DEFAULT 'user',
+    emailVerified         INTEGER NOT NULL DEFAULT 0,
+    disabled              INTEGER NOT NULL DEFAULT 0,
+    trackerLimit          INTEGER,
+    notificationsEnabled  INTEGER NOT NULL DEFAULT 1,
+    globalEmailNotify     INTEGER NOT NULL DEFAULT 1,
+    hideAiFinder          INTEGER NOT NULL DEFAULT 0,
+    hideAddTracker        INTEGER NOT NULL DEFAULT 0,
+    changesMaxHeight      INTEGER NOT NULL DEFAULT 0,
+    disableAiSummary      INTEGER NOT NULL DEFAULT 0,
+    activeProfileId       TEXT
   );
 
   CREATE TABLE IF NOT EXISTS trackers (
@@ -179,18 +188,25 @@ db.exec(`
     aiSummary     INTEGER DEFAULT 0,
     createdAt     TEXT,
     position      INTEGER DEFAULT 0,
-    emailNotify   INTEGER DEFAULT 0
+    emailNotify   INTEGER DEFAULT 0,
+    faviconUrl    TEXT,
+    profileId     TEXT
   );
 
   CREATE TABLE IF NOT EXISTS changes (
-    id           TEXT PRIMARY KEY,
-    trackerId    TEXT NOT NULL,
-    trackerLabel TEXT,
-    url          TEXT,
-    detectedAt   TEXT,
-    summary      TEXT,
-    oldHash      TEXT,
-    newHash      TEXT
+    id               TEXT PRIMARY KEY,
+    trackerId        TEXT NOT NULL,
+    trackerLabel     TEXT,
+    url              TEXT,
+    detectedAt       TEXT,
+    summary          TEXT,
+    oldHash          TEXT,
+    newHash          TEXT,
+    dismissed        INTEGER DEFAULT 0,
+    flagged          INTEGER DEFAULT 0,
+    soft             INTEGER DEFAULT 0,
+    snippet          TEXT,
+    aiDisabledReason TEXT
   );
 
   CREATE TABLE IF NOT EXISTS site_settings (
@@ -207,6 +223,16 @@ db.exec(`
     used      INTEGER NOT NULL DEFAULT 0,
     createdAt TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS profiles (
+    id        TEXT PRIMARY KEY,
+    userId    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name      TEXT NOT NULL,
+    isDefault INTEGER NOT NULL DEFAULT 0,
+    createdAt TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_profiles_userId ON profiles(userId);
 `);
 
 // Migrations for existing DBs
@@ -219,7 +245,30 @@ try { db.prepare('ALTER TABLE changes ADD COLUMN snippet           TEXT').run();
 try { db.prepare('ALTER TABLE changes ADD COLUMN aiDisabledReason   TEXT').run(); } catch {}
 try { db.prepare('ALTER TABLE trackers ADD COLUMN emailNotify INTEGER DEFAULT 0').run(); } catch {}
 try { db.prepare('ALTER TABLE trackers ADD COLUMN faviconUrl TEXT').run(); } catch {}
+try { db.prepare('ALTER TABLE trackers ADD COLUMN profileId TEXT').run(); } catch {}
 try { db.exec('ALTER TABLE users ADD COLUMN disableAiSummary INTEGER NOT NULL DEFAULT 0'); } catch {}
+try { db.exec('ALTER TABLE users ADD COLUMN activeProfileId TEXT'); } catch {}
+
+// ─── STARTUP: ensure every user has a default profile ────────────────────────
+// This migration runs once when upgrading from a version without profiles.
+// It creates a "Default" profile for each user that has none, assigns all
+// their existing trackers to it, and sets it as their active profile.
+(() => {
+  const usersWithoutProfiles = db.prepare(
+    'SELECT id FROM users WHERE id NOT IN (SELECT DISTINCT userId FROM profiles)'
+  ).all();
+  const migrateUser = db.transaction((userId) => {
+    const profileId = uuidv4();
+    db.prepare(
+      'INSERT INTO profiles (id, userId, name, isDefault, createdAt) VALUES (?, ?, ?, 1, ?)'
+    ).run(profileId, userId, 'Default', new Date().toISOString());
+    db.prepare('UPDATE users SET activeProfileId = ? WHERE id = ?').run(profileId, userId);
+    db.prepare(
+      'UPDATE trackers SET profileId = ? WHERE userId = ? AND (profileId IS NULL OR profileId = \'\')'
+    ).run(profileId, userId);
+  });
+  usersWithoutProfiles.forEach(u => migrateUser(u.id));
+})();
 
 // ─── SITE SETTINGS HELPERS ───────────────────────────────────────────────────
 function getSetting(key, defaultVal = null) {
@@ -242,6 +291,23 @@ db.exec(`
 // Pre-compiled statements used in hot paths (parsed once, reused on every call)
 const _selectUserForAuth = db.prepare('SELECT id, role, disabled FROM users WHERE id = ?');
 
+// ─── PROFILE HELPERS ─────────────────────────────────────────────────────────
+function getUserActiveProfileId(userId) {
+  const user = db.prepare('SELECT activeProfileId FROM users WHERE id = ?').get(userId);
+  if (user?.activeProfileId) return user.activeProfileId;
+  // Fallback: get the default profile if activeProfileId was never set
+  const profile = db.prepare('SELECT id FROM profiles WHERE userId = ? AND isDefault = 1').get(userId);
+  return profile?.id || null;
+}
+
+// Returns the tracker list for the user's currently active profile, with lastBody stripped.
+function getActiveProfileTrackers(userId) {
+  const activeProfileId = getUserActiveProfileId(userId);
+  return trackers
+    .filter(t => t.userId === userId && t.profileId === activeProfileId)
+    .map(({ lastBody, ...rest }) => rest);
+}
+
 function rowToTracker(row) {
   return {
     ...row,
@@ -250,6 +316,7 @@ function rowToTracker(row) {
     emailNotify:   row.emailNotify === 1,
     faviconUrl:    row.faviconUrl  || null,
     changeSnippet: row.changeSnippet ? JSON.parse(row.changeSnippet) : null,
+    profileId:     row.profileId   || null,
   };
 }
 
@@ -273,11 +340,11 @@ const _upsertTracker = db.prepare(`
   INSERT INTO trackers
     (id, userId, label, url, interval, active, status, lastCheck, lastHash,
      lastBody, httpStatus, changeCount, changeSummary, changeSnippet, error,
-     aiSummary, createdAt, position, emailNotify, faviconUrl)
+     aiSummary, createdAt, position, emailNotify, faviconUrl, profileId)
   VALUES
     (@id, @userId, @label, @url, @interval, @active, @status, @lastCheck, @lastHash,
      @lastBody, @httpStatus, @changeCount, @changeSummary, @changeSnippet, @error,
-     @aiSummary, @createdAt, @position, @emailNotify, @faviconUrl)
+     @aiSummary, @createdAt, @position, @emailNotify, @faviconUrl, @profileId)
   ON CONFLICT(id) DO UPDATE SET
     label=excluded.label, url=excluded.url, interval=excluded.interval,
     active=excluded.active, status=excluded.status, lastCheck=excluded.lastCheck,
@@ -285,7 +352,7 @@ const _upsertTracker = db.prepare(`
     changeCount=excluded.changeCount, changeSummary=excluded.changeSummary,
     changeSnippet=excluded.changeSnippet, error=excluded.error,
     aiSummary=excluded.aiSummary, position=excluded.position, emailNotify=excluded.emailNotify,
-    faviconUrl=excluded.faviconUrl
+    faviconUrl=excluded.faviconUrl, profileId=excluded.profileId
 `);
 
 function saveTrackers(list) {
@@ -328,19 +395,13 @@ function saveTrackers(list) {
     }
   })();
 
-  // SSE broadcast per-user, strip lastBody
-  const byUser = {};
-  list.forEach(t => {
-    const uid = t.userId || '_anon';
-    if (!byUser[uid]) byUser[uid] = [];
-    byUser[uid].push(t);
-  });
-  Object.entries(byUser).forEach(([userId, userTrackers]) => {
-    const safe = userTrackers.map(({ lastBody, ...rest }) => rest);
-    broadcastToUser({ type: 'update', trackers: safe }, userId);
+  // SSE broadcast per-user, strip lastBody — only send trackers for the user's active profile
+  const affectedUserIds = new Set(list.map(t => t.userId).filter(Boolean));
+  affectedUserIds.forEach(userId => {
+    broadcastToUser({ type: 'update', trackers: getActiveProfileTrackers(userId) }, userId);
   });
   // Notify users who lost all their trackers (clears stale tracker lists in other tabs)
-  emptyUserIds.forEach(uid => broadcastToUser({ type: 'update', trackers: [] }, uid));
+  emptyUserIds.forEach(uid => broadcastToUser({ type: 'update', trackers: getActiveProfileTrackers(uid) }, uid));
 }
 
 // Lightweight single-tracker save used during check cycles.
@@ -356,9 +417,9 @@ function _saveOneTracker(tracker) {
     changeSnippet: tracker.changeSnippet ? JSON.stringify(tracker.changeSnippet) : null,
     position:      position >= 0 ? position : 0,
   });
-  const userTrackers = trackers.filter(t => t.userId === tracker.userId);
+  // Only broadcast trackers belonging to the user's currently active profile
   broadcastToUser(
-    { type: 'update', trackers: userTrackers.map(({ lastBody, ...rest }) => rest) },
+    { type: 'update', trackers: getActiveProfileTrackers(tracker.userId) },
     tracker.userId
   );
 }
@@ -477,11 +538,26 @@ let trackers = loadTrackers();
     if (existingDefault) {
       db.prepare('UPDATE users SET role = ? WHERE id = ?').run('admin', existingDefault.id);
       log('✓', _c.green, 'Existing "admin" user promoted to admin role');
+      // Ensure promoted admin has a default profile
+      const hasProfile = db.prepare('SELECT id FROM profiles WHERE userId = ?').get(existingDefault.id);
+      if (!hasProfile) {
+        const pid = uuidv4();
+        db.prepare('INSERT INTO profiles (id, userId, name, isDefault, createdAt) VALUES (?, ?, ?, 1, ?)')
+          .run(pid, existingDefault.id, 'Default', new Date().toISOString());
+        db.prepare('UPDATE users SET activeProfileId = ? WHERE id = ?').run(pid, existingDefault.id);
+      }
     } else {
+      const adminId = uuidv4();
+      const profileId = uuidv4();
+      const now = new Date().toISOString();
       const hash = await bcrypt.hash('Watchbot@2025!', 12);
-      db.prepare(`INSERT INTO users (id, username, passwordHash, createdAt, role)
-                  VALUES (?, 'admin', ?, ?, 'admin')`).
-        run(uuidv4(), hash, new Date().toISOString());
+      db.transaction(() => {
+        db.prepare(`INSERT INTO users (id, username, passwordHash, createdAt, role, activeProfileId)
+                    VALUES (?, 'admin', ?, ?, 'admin', ?)`).
+          run(adminId, hash, now, profileId);
+        db.prepare('INSERT INTO profiles (id, userId, name, isDefault, createdAt) VALUES (?, ?, ?, 1, ?)')
+          .run(profileId, adminId, 'Default', now);
+      })();
       log('✓', _c.green, 'Admin account created (admin)');
     }
   }
@@ -1134,9 +1210,7 @@ app.get('/api/events', authMiddleware, (req, res) => {
   sseClients.set(clientId, { res, userId: req.userId });
   log('⇄', _c.cyan, `SSE connected    ${req.username}  (${clientId.slice(0, 8)})`);
 
-  const userTrackers = trackers
-    .filter(t => t.userId === req.userId)
-    .map(({ lastBody, ...rest }) => rest);
+  const userTrackers = getActiveProfileTrackers(req.userId);
   res.write(`data: ${JSON.stringify({ type: 'init', trackers: userTrackers })}\n\n`);
 
   req.on('close', () => {
@@ -1217,8 +1291,13 @@ app.post('/api/auth/register', async (req, res) => {
     return g > 0 ? g : null;
   })();
   const user = { id: uuidv4(), username: username.trim(), email: email.trim().toLowerCase(), passwordHash, createdAt: new Date().toISOString(), emailVerified: 0 };
-  db.prepare('INSERT INTO users (id, username, email, passwordHash, createdAt, trackerLimit, emailVerified) VALUES (?, ?, ?, ?, ?, ?, ?)')
-    .run(user.id, user.username, user.email, user.passwordHash, user.createdAt, initLimit, user.emailVerified);
+  const defaultProfileId = uuidv4();
+  db.transaction(() => {
+    db.prepare('INSERT INTO users (id, username, email, passwordHash, createdAt, trackerLimit, emailVerified, activeProfileId) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(user.id, user.username, user.email, user.passwordHash, user.createdAt, initLimit, user.emailVerified, defaultProfileId);
+    db.prepare('INSERT INTO profiles (id, userId, name, isDefault, createdAt) VALUES (?, ?, ?, 1, ?)')
+      .run(defaultProfileId, user.id, 'Default', user.createdAt);
+  })();
 
   const verificationEmailSent = await sendEmailVerificationEmail(user, req);
 
@@ -1237,6 +1316,7 @@ app.post('/api/auth/register', async (req, res) => {
     emailVerified: false,
     verificationEmailSent,
     gravatarUrl: gravatarUrl(user.email, 64),
+    activeProfileId: defaultProfileId,
   });
 });
 
@@ -1336,6 +1416,7 @@ app.post('/api/auth/login', async (req, res) => {
     disableAiSummary: user.disableAiSummary === 1,
     emailVerified: user.emailVerified === 1,
     gravatarUrl: gravatarUrl(user.email, 64),
+    activeProfileId: user.activeProfileId || null,
   });
 });
 
@@ -1355,7 +1436,7 @@ app.get('/api/auth/me', (req, res) => {
   }
   try {
     const payload = jwt.verify(token, JWT_SECRET);
-    const user = db.prepare('SELECT username, role, email, emailVerified, disabled, notificationsEnabled, hideAiFinder, hideAddTracker, changesMaxHeight, trackerLimit, disableAiSummary FROM users WHERE id = ?').get(payload.userId);
+    const user = db.prepare('SELECT username, role, email, emailVerified, disabled, notificationsEnabled, hideAiFinder, hideAddTracker, changesMaxHeight, trackerLimit, disableAiSummary, activeProfileId FROM users WHERE id = ?').get(payload.userId);
     if (!user || user.disabled) return res.status(401).json({ error: 'Not authenticated' });
     const role = user.role || 'user';
     if (getSetting('maintenanceMode', '0') === '1' && role !== 'admin')
@@ -1369,6 +1450,7 @@ app.get('/api/auth/me', (req, res) => {
       disableAiSummary:     user.disableAiSummary === 1,
         emailVerified:        user.emailVerified === 1,
       gravatarUrl:          gravatarUrl(user.email, 64),
+      activeProfileId:      user.activeProfileId || null,
       ...(payload.impersonatedBy ? { impersonatedBy: payload.impersonatedBy } : {}) });
   } catch {
     res.status(401).json({ error: 'Invalid or expired session' });
@@ -1376,7 +1458,7 @@ app.get('/api/auth/me', (req, res) => {
 });
 
 app.get('/api/auth/profile', authMiddleware, (req, res) => {
-  const user = db.prepare('SELECT id, username, email, emailVerified, createdAt, notificationsEnabled, globalEmailNotify, hideAiFinder, hideAddTracker, changesMaxHeight, disableAiSummary FROM users WHERE id = ?').get(req.userId);
+  const user = db.prepare('SELECT id, username, email, emailVerified, createdAt, notificationsEnabled, globalEmailNotify, hideAiFinder, hideAddTracker, changesMaxHeight, disableAiSummary, activeProfileId FROM users WHERE id = ?').get(req.userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
   res.json({
     ...user,
@@ -1387,6 +1469,7 @@ app.get('/api/auth/profile', authMiddleware, (req, res) => {
     hideAddTracker:       user.hideAddTracker        === 1,
     changesMaxHeight:     user.changesMaxHeight      || 0,
     disableAiSummary:     user.disableAiSummary      === 1,
+    activeProfileId:      user.activeProfileId       || null,
     gravatarUrl:          gravatarUrl(user.email, 96),
   });
 });
@@ -1595,6 +1678,95 @@ app.post('/api/auth/test-email', authMiddleware, async (req, res) => {
   }
 });
 
+// ─── PROFILES ROUTES ─────────────────────────────────────────────────────────
+const MAX_PROFILES = 10;
+
+app.get('/api/profiles', authMiddleware, (req, res) => {
+  const profiles = db.prepare(
+    'SELECT id, userId, name, isDefault, createdAt FROM profiles WHERE userId = ? ORDER BY createdAt ASC'
+  ).all(req.userId);
+  res.json(profiles.map(p => ({ ...p, isDefault: p.isDefault === 1 })));
+});
+
+app.post('/api/profiles', authMiddleware, (req, res) => {
+  const name = String(req.body?.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Profile name is required' });
+  if (name.length > 50) return res.status(400).json({ error: 'Profile name must be 50 characters or fewer' });
+  const count = db.prepare('SELECT COUNT(*) as c FROM profiles WHERE userId = ?').get(req.userId).c;
+  if (count >= MAX_PROFILES)
+    return res.status(400).json({ error: `Maximum ${MAX_PROFILES} profiles allowed` });
+  const profile = {
+    id: uuidv4(),
+    userId: req.userId,
+    name,
+    isDefault: 0,
+    createdAt: new Date().toISOString(),
+  };
+  db.prepare('INSERT INTO profiles (id, userId, name, isDefault, createdAt) VALUES (?, ?, ?, 0, ?)')
+    .run(profile.id, profile.userId, profile.name, profile.createdAt);
+  res.status(201).json({ ...profile, isDefault: false });
+});
+
+app.patch('/api/profiles/:id', authMiddleware, (req, res) => {
+  const profile = db.prepare('SELECT * FROM profiles WHERE id = ? AND userId = ?').get(req.params.id, req.userId);
+  if (!profile) return res.status(404).json({ error: 'Profile not found' });
+  if (profile.isDefault === 1) return res.status(400).json({ error: 'Cannot rename the default profile' });
+  const name = String(req.body?.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Profile name is required' });
+  if (name.length > 50) return res.status(400).json({ error: 'Profile name must be 50 characters or fewer' });
+  db.prepare('UPDATE profiles SET name = ? WHERE id = ?').run(name, profile.id);
+  res.json({ ...profile, name, isDefault: false });
+});
+
+app.delete('/api/profiles/:id', authMiddleware, (req, res) => {
+  const profile = db.prepare('SELECT * FROM profiles WHERE id = ? AND userId = ?').get(req.params.id, req.userId);
+  if (!profile) return res.status(404).json({ error: 'Profile not found' });
+  if (profile.isDefault === 1) return res.status(400).json({ error: 'Cannot delete the default profile' });
+
+  const defaultProfile = db.prepare('SELECT id FROM profiles WHERE userId = ? AND isDefault = 1').get(req.userId);
+  const fallbackId = defaultProfile?.id || null;
+
+  db.transaction(() => {
+    // Move all in-memory trackers from deleted profile to the default profile
+    trackers.forEach(t => {
+      if (t.userId === req.userId && t.profileId === profile.id) {
+        t.profileId = fallbackId;
+      }
+    });
+    if (fallbackId) {
+      db.prepare('UPDATE trackers SET profileId = ? WHERE userId = ? AND profileId = ?')
+        .run(fallbackId, req.userId, profile.id);
+    }
+    // If user was on the deleted profile, switch to default
+    const user = db.prepare('SELECT activeProfileId FROM users WHERE id = ?').get(req.userId);
+    if (user.activeProfileId === profile.id) {
+      db.prepare('UPDATE users SET activeProfileId = ? WHERE id = ?').run(fallbackId, req.userId);
+    }
+    db.prepare('DELETE FROM profiles WHERE id = ?').run(profile.id);
+  })();
+
+  // Broadcast updated tracker list (uses new activeProfileId from DB)
+  const profileTrackers = getActiveProfileTrackers(req.userId);
+  broadcastToUser({ type: 'profile-switch', trackers: profileTrackers, activeProfileId: fallbackId }, req.userId);
+
+  res.json({ success: true, activeProfileId: fallbackId });
+});
+
+app.post('/api/profiles/:id/switch', authMiddleware, (req, res) => {
+  const profile = db.prepare('SELECT * FROM profiles WHERE id = ? AND userId = ?').get(req.params.id, req.userId);
+  if (!profile) return res.status(404).json({ error: 'Profile not found' });
+
+  db.prepare('UPDATE users SET activeProfileId = ? WHERE id = ?').run(profile.id, req.userId);
+
+  // Broadcast new tracker list for the switched-to profile to all the user's SSE connections
+  const profileTrackers = trackers
+    .filter(t => t.userId === req.userId && t.profileId === profile.id)
+    .map(({ lastBody, ...rest }) => rest);
+  broadcastToUser({ type: 'profile-switch', trackers: profileTrackers, activeProfileId: profile.id }, req.userId);
+
+  res.json({ success: true, activeProfileId: profile.id });
+});
+
 // ─── ADMIN ROUTES ─────────────────────────────────────────────────────────────
 app.get('/api/admin/settings', adminMiddleware, (req, res) => {
   res.json({
@@ -1655,8 +1827,13 @@ app.post('/api/admin/users', adminMiddleware, async (req, res) => {
     return g > 0 ? g : null;
   })();
   const user = { id: uuidv4(), username: username.trim(), email: email.trim().toLowerCase(), passwordHash, role: assignedRole, createdAt: new Date().toISOString(), emailVerified: 0 };
-  db.prepare('INSERT INTO users (id, username, email, passwordHash, role, createdAt, trackerLimit, emailVerified) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-    .run(user.id, user.username, user.email, user.passwordHash, user.role, user.createdAt, initLimit, user.emailVerified);
+  const adminDefaultProfileId = uuidv4();
+  db.transaction(() => {
+    db.prepare('INSERT INTO users (id, username, email, passwordHash, role, createdAt, trackerLimit, emailVerified, activeProfileId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(user.id, user.username, user.email, user.passwordHash, user.role, user.createdAt, initLimit, user.emailVerified, adminDefaultProfileId);
+    db.prepare('INSERT INTO profiles (id, userId, name, isDefault, createdAt) VALUES (?, ?, ?, 1, ?)')
+      .run(adminDefaultProfileId, user.id, 'Default', user.createdAt);
+  })();
   const verificationEmailSent = await sendEmailVerificationEmail(user, req);
   res.status(201).json({ id: user.id, username: user.username, role: user.role, emailVerified: false, verificationEmailSent });
 });
@@ -1997,11 +2174,7 @@ app.post('/api/summarize', authMiddleware, async (req, res) => {
 });
 
 app.get('/api/trackers', authMiddleware, (req, res) => {
-  res.json(
-    trackers
-      .filter(t => t.userId === req.userId)
-      .map(({ lastBody, ...rest }) => rest)
-  );
+  res.json(getActiveProfileTrackers(req.userId));
 });
 
 app.post('/api/trackers', authMiddleware, async (req, res) => {
@@ -2037,7 +2210,8 @@ app.post('/api/trackers', authMiddleware, async (req, res) => {
     emailNotify:  emailNotify === true,
     faviconUrl:   null,
     createdAt:    new Date().toISOString(),
-    userId:       req.userId
+    userId:       req.userId,
+    profileId:    getUserActiveProfileId(req.userId),
   };
 
   trackers.unshift(tracker);
@@ -2061,21 +2235,22 @@ app.patch('/api/trackers/reorder', authMiddleware, (req, res) => {
   const { ids } = req.body;
   if (!Array.isArray(ids)) return res.status(400).json({ error: 'ids array required' });
 
-  const userIds = new Set(
-    trackers.filter(t => t.userId === req.userId).map(t => t.id)
+  const activeProfileId = getUserActiveProfileId(req.userId);
+  const profileTrackerIds = new Set(
+    trackers.filter(t => t.userId === req.userId && t.profileId === activeProfileId).map(t => t.id)
   );
-  if (ids.some(id => !userIds.has(id)))
+  if (ids.some(id => !profileTrackerIds.has(id)))
     return res.status(403).json({ error: 'Forbidden' });
 
   const posMap = {};
   ids.forEach((id, i) => { posMap[id] = i; });
 
-  trackers.sort((a, b) => {
-    const aIsUser = a.userId === req.userId;
-    const bIsUser = b.userId === req.userId;
-    if (aIsUser && bIsUser) return (posMap[a.id] ?? 0) - (posMap[b.id] ?? 0);
-    return 0;
-  });
+  // Re-sort: profile trackers get new positions; other trackers keep their relative order
+  // We need to interleave profile trackers (in new order) with non-profile trackers (unchanged)
+  const profileTrackers    = trackers.filter(t => t.userId === req.userId && t.profileId === activeProfileId);
+  const nonProfileTrackers = trackers.filter(t => !(t.userId === req.userId && t.profileId === activeProfileId));
+  profileTrackers.sort((a, b) => (posMap[a.id] ?? 0) - (posMap[b.id] ?? 0));
+  trackers = [...profileTrackers, ...nonProfileTrackers];
 
   saveTrackers(trackers);
   res.json({ success: true });

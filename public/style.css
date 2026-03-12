@@ -1586,3 +1586,80 @@
     opacity: 1;
     transform: translateY(0);
   }
+
+  /* ── PROFILES ───────────────────────────────────────────────────────────── */
+  .topbar-profile-name {
+    position: absolute;
+    bottom: -2px;
+    right: -2px;
+    background: var(--primary);
+    color: #fff;
+    font-size: 8px;
+    font-weight: 600;
+    padding: 1px 4px;
+    border-radius: 6px;
+    max-width: 60px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 1.4;
+    pointer-events: none;
+    display: none;
+  }
+  #profilesBtn { position: relative; }
+
+  .profile-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .profile-item-active {
+    border-color: var(--primary);
+    background: var(--primary-light);
+  }
+  .profile-item-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    flex: 1;
+  }
+  .profile-item-icon {
+    font-size: 20px;
+    color: var(--primary);
+    flex-shrink: 0;
+  }
+  .profile-item-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--on-surface);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .profile-item-meta {
+    font-size: 12px;
+    color: var(--on-surface-medium);
+    margin-top: 1px;
+  }
+  .profile-item-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  .profile-active-badge {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--primary);
+    padding: 3px 8px;
+    background: rgba(26,115,232,0.12);
+    border-radius: 12px;
+    letter-spacing: 0.2px;
+  }
