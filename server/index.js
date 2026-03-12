@@ -1862,25 +1862,12 @@ app.patch('/api/admin/users/:id', adminMiddleware, async (req, res) => {
   const { disabled, trackerLimit, email, role, username, newPassword } = req.body;
   let emailChanged = false;
 
-  if (disabled !== undefined) {
-    db.prepare('UPDATE users SET disabled = ? WHERE id = ?').run(disabled ? 1 : 0, targetId);
-    if (disabled) {
-      // Force-logout active sessions
-      const msg = `data: ${JSON.stringify({ type: 'force_logout' })}\n\n`;
-      sseClients.forEach((client, clientId) => {
-        if (client.userId === targetId) {
-          try { client.res.write(msg); client.res.end(); } catch {}
-          sseClients.delete(clientId);
-        }
-      });
-    }
-  }
+  // ── Pre-validate everything before touching the DB ──────────────────────────
 
   if (trackerLimit !== undefined) {
     const limit = trackerLimit === null ? null : parseInt(trackerLimit);
     if (limit !== null && (isNaN(limit) || limit < 0))
       return res.status(400).json({ error: 'Invalid tracker limit' });
-    db.prepare('UPDATE users SET trackerLimit = ? WHERE id = ?').run(limit, targetId);
   }
 
   if (username !== undefined) {
@@ -1889,7 +1876,6 @@ app.patch('/api/admin/users/:id', adminMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'Username must be at least 2 characters' });
     const conflict = db.prepare('SELECT id FROM users WHERE LOWER(username) = LOWER(?) AND id != ?').get(trimmed, targetId);
     if (conflict) return res.status(409).json({ error: 'That username is already taken' });
-    db.prepare('UPDATE users SET username = ? WHERE id = ?').run(trimmed, targetId);
   }
 
   if (email !== undefined) {
@@ -1900,21 +1886,57 @@ app.patch('/api/admin/users/:id', adminMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'Please enter a valid email address' });
     const conflict = db.prepare('SELECT id FROM users WHERE LOWER(email) = LOWER(?) AND id != ?').get(trimmed, targetId);
     if (conflict) return res.status(409).json({ error: 'An account with that email already exists' });
-    db.prepare('UPDATE users SET email = ?, emailVerified = 0 WHERE id = ?').run(trimmed.toLowerCase(), targetId);
-    emailChanged = true;
   }
 
   if (newPassword !== undefined && String(newPassword).trim() !== '') {
     const pwError = passwordPolicyError(newPassword, 'New password');
     if (pwError) return res.status(400).json({ error: pwError });
-    const hash = await bcrypt.hash(newPassword, 12);
-    db.prepare('UPDATE users SET passwordHash = ? WHERE id = ?').run(hash, targetId);
   }
 
   if (role !== undefined) {
     const allowedRoles = ['user', 'admin'];
     if (!allowedRoles.includes(role)) return res.status(400).json({ error: 'Invalid role' });
-    db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, targetId);
+  }
+
+  // ── All validations passed — apply updates ───────────────────────────────────
+
+  let nextPasswordHash = null;
+  if (newPassword !== undefined && String(newPassword).trim() !== '') {
+    nextPasswordHash = await bcrypt.hash(newPassword, 12);
+  }
+
+  db.transaction(() => {
+    if (disabled !== undefined) {
+      db.prepare('UPDATE users SET disabled = ? WHERE id = ?').run(disabled ? 1 : 0, targetId);
+    }
+    if (trackerLimit !== undefined) {
+      const limit = trackerLimit === null ? null : parseInt(trackerLimit);
+      db.prepare('UPDATE users SET trackerLimit = ? WHERE id = ?').run(limit, targetId);
+    }
+    if (username !== undefined) {
+      db.prepare('UPDATE users SET username = ? WHERE id = ?').run(String(username || '').trim(), targetId);
+    }
+    if (email !== undefined) {
+      db.prepare('UPDATE users SET email = ?, emailVerified = 0 WHERE id = ?').run((email || '').trim().toLowerCase(), targetId);
+      emailChanged = true;
+    }
+    if (nextPasswordHash !== null) {
+      db.prepare('UPDATE users SET passwordHash = ? WHERE id = ?').run(nextPasswordHash, targetId);
+    }
+    if (role !== undefined) {
+      db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, targetId);
+    }
+  })();
+
+  // Force-logout active SSE sessions if the account was just disabled
+  if (disabled) {
+    const msg = `data: ${JSON.stringify({ type: 'force_logout' })}\n\n`;
+    sseClients.forEach((client, clientId) => {
+      if (client.userId === targetId) {
+        try { client.res.write(msg); client.res.end(); } catch {}
+        sseClients.delete(clientId);
+      }
+    });
   }
 
   let verificationEmailSent = false;
@@ -1986,7 +2008,7 @@ app.delete('/api/admin/trackers/:id', adminMiddleware, (req, res) => {
 app.post('/api/admin/impersonate/:id', adminMiddleware, (req, res) => {
   const targetId = req.params.id;
   if (targetId === req.userId) return res.status(400).json({ error: 'Cannot impersonate yourself' });
-  const target = db.prepare('SELECT id, username, role, email, emailVerified, disabled, notificationsEnabled, hideAiFinder, hideAddTracker, changesMaxHeight, trackerLimit, disableAiSummary FROM users WHERE id = ?').get(targetId);
+  const target = db.prepare('SELECT id, username, role, email, emailVerified, disabled, notificationsEnabled, hideAiFinder, hideAddTracker, changesMaxHeight, trackerLimit, disableAiSummary, activeProfileId FROM users WHERE id = ?').get(targetId);
   if (!target) return res.status(404).json({ error: 'User not found' });
   if (target.disabled) return res.status(400).json({ error: 'Cannot impersonate a disabled account' });
 
@@ -2009,6 +2031,7 @@ app.post('/api/admin/impersonate/:id', adminMiddleware, (req, res) => {
     disableAiSummary: target.disableAiSummary === 1,
     emailVerified: target.emailVerified === 1,
     gravatarUrl: gravatarUrl(target.email, 64),
+    activeProfileId: target.activeProfileId || null,
     impersonatedBy: { id: req.userId, username: req.username } });
 });
 
@@ -2025,7 +2048,7 @@ app.post('/api/admin/stop-impersonate', (req, res) => {
   }
   res.cookie('watchbot_auth', restoreToken, { httpOnly: true, sameSite: 'lax', maxAge: COOKIE_MAX_AGE });
   res.clearCookie('watchbot_restore');
-  const user = db.prepare('SELECT username, role, email, emailVerified, notificationsEnabled, hideAiFinder, hideAddTracker, changesMaxHeight, trackerLimit, disableAiSummary FROM users WHERE id = ?').get(payload.userId);
+  const user = db.prepare('SELECT username, role, email, emailVerified, notificationsEnabled, hideAiFinder, hideAddTracker, changesMaxHeight, trackerLimit, disableAiSummary, activeProfileId FROM users WHERE id = ?').get(payload.userId);
   res.json({ id: payload.userId, username: user?.username || payload.username, role: user?.role || 'admin',
     notificationsEnabled: user?.notificationsEnabled !== 0,
     hideAiFinder: user?.hideAiFinder === 1,
@@ -2034,7 +2057,8 @@ app.post('/api/admin/stop-impersonate', (req, res) => {
     trackerLimit: user?.trackerLimit ?? null,
     disableAiSummary: user?.disableAiSummary === 1,
     emailVerified: user?.emailVerified === 1,
-    gravatarUrl: gravatarUrl(user?.email, 64) });
+    gravatarUrl: gravatarUrl(user?.email, 64),
+    activeProfileId: user?.activeProfileId || null });
 });
 
 // ─── FETCH PAGE TITLE ────────────────────────────────────────────────────────
@@ -2186,8 +2210,18 @@ app.post('/api/trackers', authMiddleware, async (req, res) => {
   const { url, label, interval, aiSummary, emailNotify } = req.body;
   if (!url) return res.status(400).json({ error: 'url is required' });
   try { new URL(url); } catch { return res.status(400).json({ error: 'Invalid URL' }); }
-  if (req.role !== 'admin' && interval && !getUserAllowedIntervals().includes(Number(interval)))
-    return res.status(400).json({ error: 'That check interval is not available. Please choose from the allowed options.' });
+
+  // Determine the effective interval, enforcing the allowed-intervals policy for non-admins.
+  // A missing/falsy interval defaults to the minimum allowed interval (non-admin) or 30 s (admin).
+  let effectiveInterval;
+  if (req.role !== 'admin') {
+    const allowed = getUserAllowedIntervals();
+    if (interval && !allowed.includes(Number(interval)))
+      return res.status(400).json({ error: 'That check interval is not available. Please choose from the allowed options.' });
+    effectiveInterval = (interval && allowed.includes(Number(interval))) ? Number(interval) : allowed[0];
+  } else {
+    effectiveInterval = interval || 30000;
+  }
 
   const userRow = db.prepare('SELECT trackerLimit FROM users WHERE id = ?').get(req.userId);
   // null or 0 = unlimited; positive integer = hard cap. Global default is only applied at user creation.
@@ -2201,7 +2235,7 @@ app.post('/api/trackers', authMiddleware, async (req, res) => {
   const tracker = {
     id: uuidv4(), url,
     label:        label || url,
-    interval:     interval || 30000,
+    interval:     effectiveInterval,
     active:       true,
     status:       'pending',
     lastCheck:    null,

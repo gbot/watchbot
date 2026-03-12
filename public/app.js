@@ -1902,7 +1902,8 @@ async function saveProfilePassword() {
 
 function sendTestNotification() {
   if (Notification.permission === 'granted') {
-    showBrowserNotification('Watchbot: Notifications working!', 'Browser notifications are enabled and working correctly.', '/');
+    const name = currentUser?.username || 'there';
+    showBrowserNotification('Watchbot: Notifications working!', `Hi ${name}! Browser notifications from Watchbot are working.`, '/');
   } else if (Notification.permission === 'denied') {
     showSnackbar('Notifications are blocked in your browser settings.', 'error');
   } else {
@@ -2099,6 +2100,10 @@ function connectSSE() {
             triggerBrowserNotification(t.label, t.url);
           }
         });
+        // Keep the Profiles modal tracker-count up to date if it is open
+        if (document.getElementById('profilesOverlay')?.classList.contains('show')) {
+          loadProfiles().then(() => renderProfilesDialog());
+        }
       }
     }
   };
