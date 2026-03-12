@@ -12,6 +12,7 @@ let _sseProbePending  = false;
 // Profiles state
 let profiles       = [];   // [{id, userId, name, isDefault, createdAt}]
 let activeProfileId = null; // currently active profile id
+let userTotalTrackerCount = 0; // total trackers across ALL profiles (updated from SSE)
 
 // ─── TOOLTIP ENGINE ──────────────────────────────────────────────────────────
 // Single floating element driven by event delegation — works for all elements
@@ -708,6 +709,7 @@ async function handleLogout() {
   trackers    = [];
   profiles    = [];
   activeProfileId = null;
+  userTotalTrackerCount = 0;
   _updateTopbarProfileName();
   renderTrackers();
   updateBadge();
@@ -1336,6 +1338,7 @@ async function adminImpersonate(id) {
   closeAdminPanel();
   if (evtSource) { evtSource.close(); evtSource = null; }
   trackers = [];
+  userTotalTrackerCount = 0;
   renderTrackers();
   showApp();
 }
@@ -1347,6 +1350,7 @@ async function stopImpersonating() {
   currentUser = data;
   if (evtSource) { evtSource.close(); evtSource = null; }
   trackers = [];
+  userTotalTrackerCount = 0;
   renderTrackers();
   showApp();
 }
@@ -1902,7 +1906,7 @@ async function saveProfilePassword() {
 
 function sendTestNotification() {
   if (Notification.permission === 'granted') {
-    const name = currentUser?.username || 'there';
+    const name = String(currentUser?.username || 'there').replace(/[^\w\s\-'.]/g, '').slice(0, 50) || 'there';
     showBrowserNotification('Watchbot: Notifications working!', `Hi ${name}! Browser notifications from Watchbot are working.`, '/');
   } else if (Notification.permission === 'denied') {
     showSnackbar('Notifications are blocked in your browser settings.', 'error');
@@ -2016,6 +2020,7 @@ async function deleteAccount() {
       if (evtSource) { evtSource.close(); evtSource = null; }
       currentUser = null;
       trackers    = [];
+      userTotalTrackerCount = 0;
       renderTrackers();
       updateBadge();
       document.getElementById('userArea').style.display = 'none';
@@ -2037,6 +2042,7 @@ function connectSSE() {
       if (evtSource) { evtSource.close(); evtSource = null; }
       currentUser = null;
       trackers    = [];
+      userTotalTrackerCount = 0;
       renderTrackers();
       updateBadge();
       document.getElementById('userArea').style.display = 'none';
@@ -2050,6 +2056,7 @@ function connectSSE() {
         if (currentUser) currentUser.activeProfileId = activeProfileId;
       }
       trackers = data.trackers || [];
+      if (data.totalTrackerCount !== undefined) userTotalTrackerCount = data.totalTrackerCount;
       // Clear per-tracker history cache so switching profiles shows fresh data
       Object.keys(_tcCache).forEach(k => delete _tcCache[k]);
       renderTrackers();
@@ -2067,6 +2074,7 @@ function connectSSE() {
       if (data.type === 'init') {
         // Full replace on initial load
         trackers = data.trackers;
+        if (data.totalTrackerCount !== undefined) userTotalTrackerCount = data.totalTrackerCount;
       } else {
         // Merge update by id, preserving client's current order
         const incoming = new Map(data.trackers.map(t => [t.id, t]));
@@ -2076,6 +2084,7 @@ function connectSSE() {
         // Prepend any newly added trackers (server always unshifts new ones to front)
         const existingIds = new Set(trackers.map(t => t.id));
         data.trackers.forEach(t => { if (!existingIds.has(t.id)) trackers.unshift(t); });
+        if (data.totalTrackerCount !== undefined) userTotalTrackerCount = data.totalTrackerCount;
       }
       if (data.type === 'update') {
         // Invalidate cache when history grows, regardless of tracker status.
@@ -2116,6 +2125,7 @@ function connectSSE() {
       if (probe.status === 503) {
         currentUser = null;
         trackers    = [];
+        userTotalTrackerCount = 0;
         renderTrackers();
         updateBadge();
         showMaintenanceOverlay();
@@ -3279,10 +3289,9 @@ function trackerHTML(t) {
 }
 
 function updateBadge() {
-  const active = trackers.filter(t => t.active).length;
   const limit = currentUser && currentUser.trackerLimit ? currentUser.trackerLimit : null;
   const limitStr = limit ? limit : '<span style="font-size:22px;line-height:1;vertical-align:middle">∞</span>';
-  document.getElementById('activeCount').innerHTML = `${active} active / ${limitStr}`;
+  document.getElementById('activeCount').innerHTML = `${userTotalTrackerCount} / ${limitStr}`;
   const btn = document.getElementById('dismissAllBtn');
   if (btn) btn.style.display = trackers.some(t => t.status === 'changed') ? '' : 'none';
   const hasHistory = trackers.some(t => t.changeCount > 0);
