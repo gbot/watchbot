@@ -631,6 +631,19 @@
     </div>
     <div class="profile-divider"></div>
 
+    <!-- AI summaries -->
+    <div class="profile-section">
+      <div class="profile-section-title">AI summaries</div>
+      <label class="toggle-switch" style="font-size:14px;color:var(--on-surface)">
+        <input type="checkbox" id="profileDisableAiSummary" onchange="saveProfileDisableAiSummary(this.checked)">
+        <span class="toggle-track"></span>
+        Disable AI summaries
+      </label>
+      <p style="font-size:12px;color:var(--on-surface-medium);margin:0">Disable AI-generated change summaries for all your WatchBots. Changes are still detected and logged.</p>
+    </div>
+
+    <div class="profile-divider"></div>
+
     <!-- Panel visibility -->
     <div class="profile-section">
       <div class="profile-section-title">Panel visibility</div>
@@ -647,19 +660,6 @@
         Hide Add a WatchBot
       </label>
       <p style="font-size:12px;color:var(--on-surface-medium);margin:0">Hides the &ldquo;Add a WatchBot&rdquo; form from your dashboard.</p>
-    </div>
-
-    <div class="profile-divider"></div>
-
-    <!-- AI summaries -->
-    <div class="profile-section">
-      <div class="profile-section-title">AI summaries</div>
-      <label class="toggle-switch" style="font-size:14px;color:var(--on-surface)">
-        <input type="checkbox" id="profileDisableAiSummary" onchange="saveProfileDisableAiSummary(this.checked)">
-        <span class="toggle-track"></span>
-        Disable AI summaries
-      </label>
-      <p style="font-size:12px;color:var(--on-surface-medium);margin:0">Disable AI-generated change summaries for all your WatchBots. Changes are still detected and logged.</p>
     </div>
 
     <div class="profile-divider"></div>
@@ -703,7 +703,7 @@
         <span class="toggle-track"></span>
         Email notifications
       </label>
-      <p style="font-size:12px;color:var(--on-surface-medium);margin:0">Master switch for all per-tracker email notifications. Requires an email address above.</p>
+      <p style="font-size:12px;color:var(--on-surface-medium);margin:0">Master switch for all bot email notifications.</p>
       <div id="testEmailRow" style="display:none;align-items:center;gap:12px;flex-wrap:wrap">
         <button id="testEmailBtn" class="btn btn-text" style="padding:4px 0" onclick="sendTestEmail()">
           <span class="material-icons" style="font-size:16px">email</span> Send test email
