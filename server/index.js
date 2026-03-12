@@ -1241,6 +1241,14 @@ function authMiddleware(req, res, next) {
     if (getSetting('maintenanceMode', '0') === '1' && req.role !== 'admin') {
       return res.status(503).json({ error: 'The site is currently undergoing maintenance. Please try again later.' });
     }
+    // Reject non-admin sessions that were issued before the last "kill all sessions" action
+    if (req.role !== 'admin' && !payload.impersonatedBy) {
+      const killTs = parseInt(getSetting('sessionKilledAt', '0') || '0');
+      if (killTs > 0 && (payload.iat * 1000) < killTs) {
+        res.clearCookie('watchbot_auth');
+        return res.status(401).json({ error: 'Session terminated by administrator' });
+      }
+    }
     next();
   } catch {
     return res.status(401).json({ error: 'Invalid or expired session' });
@@ -1821,6 +1829,35 @@ app.patch('/api/admin/settings', adminMiddleware, (req, res) => {
     });
   }
   res.json({ ok: true });
+});
+
+app.get('/api/admin/site-stats', adminMiddleware, (req, res) => {
+  const totalUsers   = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
+  const activeUsers  = db.prepare('SELECT COUNT(*) as c FROM users WHERE disabled = 0').get().c;
+  const totalTrackers  = trackers.length;
+  const activeTrackers = trackers.filter(t => t.active).length;
+  const changedTrackers = trackers.filter(t => t.status === 'changed').length;
+  const sseConnections = sseClients.size;
+  res.json({ totalUsers, activeUsers, totalTrackers, activeTrackers, changedTrackers, sseConnections });
+});
+
+app.post('/api/admin/kill-all-sessions', adminMiddleware, (req, res) => {
+  // Record kill timestamp — authMiddleware rejects non-admin JWTs issued before this
+  setSetting('sessionKilledAt', String(Date.now()));
+
+  // Force-logout all non-admin SSE connections immediately
+  const msg = `data: ${JSON.stringify({ type: 'force_logout' })}\n\n`;
+  let count = 0;
+  sseClients.forEach((client, clientId) => {
+    if (client.userId === req.userId) return; // skip the calling admin's own connections
+    const clientUser = _selectUserForAuth.get(client.userId);
+    if (clientUser?.role === 'admin') return; // skip other admin connections too
+    try { client.res.write(msg); client.res.end(); } catch {}
+    sseClients.delete(clientId);
+    count++;
+  });
+
+  res.json({ ok: true, sessionsTerminated: count });
 });
 
 app.post('/api/admin/users', adminMiddleware, async (req, res) => {
