@@ -3387,8 +3387,8 @@ function trackerHTML(t) {
       <div class="tracker-meta">
         <div class="tracker-times">
           <div class="tracker-interval">${intervalLabel}<span class="material-icons">schedule</span></div>
-          <div class="tracker-time-item"${lastCheckTs ? ` data-ts="${t.lastCheck}"` : ''} data-tip="Last run: ${lastCheckFull}">${lastCheckTs ? timeAgo(t.lastCheck) : 'Never'}<span class="material-icons tracker-time-icon">history</span></div>
-          <div class="tracker-time-next"${nextCheckTs ? ` data-next-ts="${nextCheckTs.toISOString()}"` : ''} data-tip="Next run: ${nextCheckFull}">${nextCheckTs ? timeUntil(nextCheckTs.toISOString()) : '—'}<span class="material-icons tracker-time-icon">update</span></div>
+          <div class="tracker-time-item"${lastCheckTs ? ` data-ts="${t.lastCheck}"` : ''} data-tip="Last run: ${lastCheckFull}"><span class="tracker-time-text">${lastCheckTs ? timeAgo(t.lastCheck) : 'Never'}</span><span class="material-icons tracker-time-icon">history</span></div>
+          <div class="tracker-time-next"${nextCheckTs ? ` data-next-ts="${nextCheckTs.toISOString()}"` : ''} data-tip="Next run: ${nextCheckFull}"><span class="tracker-time-text">${nextCheckTs ? timeUntil(nextCheckTs.toISOString()) : '—'}</span><span class="material-icons tracker-time-icon">update</span></div>
         </div>
       </div>
       <div class="tracker-actions">
@@ -3858,10 +3858,10 @@ function timeUntil(isoString) {
 // Refresh all relative timestamps every 30 seconds
 setInterval(() => {
   document.querySelectorAll('.tracker-time-item[data-ts]').forEach(el => {
-    if (el.dataset.ts) el.firstChild.textContent = timeAgo(el.dataset.ts);
+    if (el.dataset.ts) el.querySelector('.tracker-time-text').textContent = timeAgo(el.dataset.ts);
   });
   document.querySelectorAll('.tracker-time-next[data-next-ts]').forEach(el => {
-    if (el.dataset.nextTs) el.firstChild.textContent = timeUntil(el.dataset.nextTs);
+    if (el.dataset.nextTs) el.querySelector('.tracker-time-text').textContent = timeUntil(el.dataset.nextTs);
   });
 }, 30000);
 
