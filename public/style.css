@@ -310,11 +310,23 @@
     display: flex; align-items: center; gap: 4px; white-space: nowrap;
   }
   .tracker-interval .material-icons { font-size: 14px; }
-  .tracker-last-check {
-    font-size: 11px; color: var(--on-surface-light); white-space: nowrap;
+  .tracker-meta-icons {
+    display: flex; align-items: center; gap: 5px;
   }
-  .tracker-time-ago {
-    font-size: 10px; color: var(--on-surface-light); opacity: 0.7; white-space: nowrap;
+  .tracker-meta-icon {
+    display: flex; align-items: center; color: var(--primary); opacity: 0.75;
+  }
+  .tracker-meta-pipe {
+    width: 1px; height: 14px; background: var(--on-surface-light); opacity: 0.4; flex-shrink: 0;
+  }
+  .tracker-times {
+    display: flex; flex-direction: column; align-items: flex-end; gap: 2px;
+  }
+  .tracker-time-item {
+    font-size: 11px; color: var(--on-surface-light); white-space: nowrap; cursor: default;
+  }
+  .tracker-time-next {
+    font-size: 10px; color: var(--on-surface-light); opacity: 0.7; white-space: nowrap; cursor: default;
   }
 
   .tracker-actions { display: flex; align-items: center; gap: 1px; }
