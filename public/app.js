@@ -3379,16 +3379,16 @@ function trackerHTML(t) {
           <div class="tracker-url">${escHtml(t.url)}</div>
         </div>
       </div>
-      <span class="chip ${chipClass}" style="margin-right:8px">${chipLabel}</span>
+      <span class="chip ${chipClass}">${chipLabel}</span>
+      ${(t.aiSummary !== false || t.emailNotify) ? `<div class="tracker-meta-icons">
+        ${t.aiSummary !== false ? `<div data-tip="AI summary enabled" class="tracker-meta-icon"><span class="material-icons" style="font-size:13px">auto_awesome</span></div>` : ''}
+        ${t.emailNotify ? `<div data-tip="Email notifications enabled" class="tracker-meta-icon"><span class="material-icons" style="font-size:13px">email</span></div>` : ''}
+      </div>` : ''}
       <div class="tracker-meta">
-        <div class="tracker-interval"><span class="material-icons">schedule</span>${intervalLabel}</div>
-        ${(t.aiSummary !== false || t.emailNotify) ? `<div class="tracker-meta-icons">
-          ${t.aiSummary !== false ? `<div data-tip="AI summary enabled" class="tracker-meta-icon"><span class="material-icons" style="font-size:13px">auto_awesome</span></div>` : ''}
-          ${t.emailNotify ? `<div data-tip="Email notifications enabled" class="tracker-meta-icon"><span class="material-icons" style="font-size:13px">email</span></div>` : ''}
-        </div><div class="tracker-meta-pipe"></div>` : ''}
         <div class="tracker-times">
-          <div class="tracker-time-item" data-ts="${t.lastCheck || ''}" data-tip="Last run: ${lastCheckFull}">${lastCheckTs ? timeAgo(t.lastCheck) : 'Never'}</div>
-          <div class="tracker-time-next" data-next-ts="${nextCheckTs ? nextCheckTs.toISOString() : ''}" data-tip="Next run: ${nextCheckFull}">${nextCheckTs ? timeUntil(nextCheckTs.toISOString()) : '—'}</div>
+          <div class="tracker-interval"><span class="material-icons">schedule</span>${intervalLabel}</div>
+          <div class="tracker-time-item"${lastCheckTs ? ` data-ts="${t.lastCheck}"` : ''} data-tip="Last run: ${lastCheckFull}">${lastCheckTs ? timeAgo(t.lastCheck) : 'Never'}</div>
+          <div class="tracker-time-next"${nextCheckTs ? ` data-next-ts="${nextCheckTs.toISOString()}"` : ''} data-tip="Next run: ${nextCheckFull}">${nextCheckTs ? timeUntil(nextCheckTs.toISOString()) : '—'}</div>
         </div>
       </div>
       <div class="tracker-actions">
@@ -3843,7 +3843,8 @@ function timeAgo(isoString) {
 }
 
 function timeUntil(isoString) {
-  const secs = Math.floor((new Date(isoString) - Date.now()) / 1000);
+  const ms   = new Date(isoString) - Date.now();
+  const secs = Math.floor(ms / 1000);
   if (secs <= 0)   return 'now';
   if (secs < 60)   return `in ${secs}s`;
   const mins = Math.floor(secs / 60);

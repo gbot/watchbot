@@ -316,9 +316,6 @@
   .tracker-meta-icon {
     display: flex; align-items: center; color: var(--primary); opacity: 0.75;
   }
-  .tracker-meta-pipe {
-    width: 1px; height: 14px; background: var(--on-surface-light); opacity: 0.4; flex-shrink: 0;
-  }
   .tracker-times {
     display: flex; flex-direction: column; align-items: flex-end; gap: 2px;
   }
