@@ -2522,7 +2522,7 @@ function _tcBuildHTML(t, cache) {
   const isNew      = t.status === 'changed';
   const collapsed  = _tcCollapsed.has(t.id);
   const toggleIcon = collapsed ? 'expand_more' : 'expand_less';
-  const toggleTitle = collapsed ? 'Show history' : 'Hide history';
+  const toggleTitle = collapsed ? 'Show updates' : 'Hide updates';
 
   const unreadCount  = cache?.loaded
     ? cache.items.filter(i => !i.dismissed).length
@@ -2532,7 +2532,7 @@ function _tcBuildHTML(t, cache) {
 
   let html = `<div class="tc-header">
     <span class="material-icons" style="font-size:16px;flex-shrink:0;color:var(--on-surface-medium)">history</span>
-    <span class="tc-title">History</span>
+    <span class="tc-title">Updates</span>
     <button class="tc-icon-btn tc-icon-btn-delete" data-tip="Delete all unflagged history" onclick="_tcDeleteHistory('${t.id}')" style="margin-left:16px">
       <span class="material-icons">delete_outline</span>
     </button>
@@ -2905,7 +2905,7 @@ function _tcToggleHistory(id) {
   if (icon) {
     icon.textContent = isCollapsed ? 'expand_less' : 'expand_more';
     const btn = icon.closest('.tc-icon-btn');
-    if (btn) btn.title = isCollapsed ? 'Hide history' : 'Show history';
+    if (btn) btn.title = isCollapsed ? 'Hide updates' : 'Show updates';
   }
   const body = container.querySelector('.tc-body');
   if (body) {
@@ -2968,7 +2968,7 @@ function _updateToggleAllBtn() {
   const withHistory  = trackers.filter(t => t.changeCount > 0 && _trackerMatchesViewFilters(t));
   const anyCollapsed = withHistory.some(t => _tcCollapsed.has(t.id));
   icon.textContent   = anyCollapsed ? 'unfold_more' : 'unfold_less';
-  btn.setAttribute('data-tip', 'Expand collapse updates');
+  btn.setAttribute('data-tip', 'Expand / collapse updates');
 }
 
 async function _tcDeleteHistory(id) {
