@@ -2949,7 +2949,7 @@ function _tcToggleHistory(id) {
 }
 
 function _tcToggleAll() {
-  const withHistory = trackers.filter(t => t.changeCount > 0);
+  const withHistory = trackers.filter(t => t.changeCount > 0 && _trackerMatchesViewFilters(t));
   const anyCollapsed = withHistory.some(t => _tcCollapsed.has(t.id));
   if (anyCollapsed) {
     // Expand all that are currently collapsed
@@ -2965,10 +2965,10 @@ function _updateToggleAllBtn() {
   const btn  = document.getElementById('toggleAllBtn');
   const icon = document.getElementById('toggleAllIcon');
   if (!btn || !icon) return;
-  const withHistory  = trackers.filter(t => t.changeCount > 0);
+  const withHistory  = trackers.filter(t => t.changeCount > 0 && _trackerMatchesViewFilters(t));
   const anyCollapsed = withHistory.some(t => _tcCollapsed.has(t.id));
   icon.textContent   = anyCollapsed ? 'unfold_more' : 'unfold_less';
-  btn.setAttribute('data-tip', anyCollapsed ? 'Expand all histories' : 'Collapse all histories');
+  btn.setAttribute('data-tip', 'Expand collapse updates');
 }
 
 async function _tcDeleteHistory(id) {
