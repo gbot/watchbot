@@ -2948,16 +2948,27 @@ function _tcToggleHistory(id) {
   }
 }
 
-function _tcExpandAll() {
-  trackers.filter(t => t.changeCount > 0).forEach(t => {
-    if (_tcCollapsed.has(t.id)) _tcToggleHistory(t.id);
-  });
+function _tcToggleAll() {
+  const withHistory = trackers.filter(t => t.changeCount > 0);
+  const anyCollapsed = withHistory.some(t => _tcCollapsed.has(t.id));
+  if (anyCollapsed) {
+    // Expand all that are currently collapsed
+    withHistory.forEach(t => { if (_tcCollapsed.has(t.id)) _tcToggleHistory(t.id); });
+  } else {
+    // All expanded – collapse everything
+    withHistory.forEach(t => { if (!_tcCollapsed.has(t.id)) _tcToggleHistory(t.id); });
+  }
+  _updateToggleAllBtn();
 }
 
-function _tcCollapseAll() {
-  trackers.filter(t => t.changeCount > 0).forEach(t => {
-    if (!_tcCollapsed.has(t.id)) _tcToggleHistory(t.id);
-  });
+function _updateToggleAllBtn() {
+  const btn  = document.getElementById('toggleAllBtn');
+  const icon = document.getElementById('toggleAllIcon');
+  if (!btn || !icon) return;
+  const withHistory  = trackers.filter(t => t.changeCount > 0);
+  const anyCollapsed = withHistory.some(t => _tcCollapsed.has(t.id));
+  icon.textContent   = anyCollapsed ? 'unfold_more' : 'unfold_less';
+  btn.setAttribute('data-tip', anyCollapsed ? 'Expand all histories' : 'Collapse all histories');
 }
 
 async function _tcDeleteHistory(id) {
@@ -3455,11 +3466,12 @@ function updateBadge() {
 
   const btn = document.getElementById('dismissAllBtn');
   if (btn) btn.style.display = trackers.some(t => t.status === 'changed') ? '' : 'none';
-  const hasHistory = trackers.some(t => t.changeCount > 0);
-  const expandBtn   = document.getElementById('expandAllBtn');
-  const collapseBtn = document.getElementById('collapseAllBtn');
-  if (expandBtn)   expandBtn.style.display   = hasHistory ? '' : 'none';
-  if (collapseBtn) collapseBtn.style.display = hasHistory ? '' : 'none';
+  const hasHistory    = trackers.some(t => t.changeCount > 0);
+  const toggleAllBtn  = document.getElementById('toggleAllBtn');
+  if (toggleAllBtn) {
+    toggleAllBtn.style.display = hasHistory ? '' : 'none';
+    _updateToggleAllBtn();
+  }
 }
 
 // ─── NOTIFICATIONS ────────────────────────────────────────────────────────────

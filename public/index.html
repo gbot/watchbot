@@ -174,11 +174,8 @@
           <span class="material-icons">auto_awesome</span>AI
         </button>
         <div style="display:flex;gap:2px;align-items:center;border-left:1px solid var(--divider);padding-left:8px;margin-left:2px">
-          <button id="expandAllBtn" onclick="_tcExpandAll()" style="display:none" class="btn-icon" data-tip="Expand all histories">
-            <span class="material-icons" style="font-size:18px">unfold_more</span>
-          </button>
-          <button id="collapseAllBtn" onclick="_tcCollapseAll()" style="display:none" class="btn-icon" data-tip="Collapse all histories">
-            <span class="material-icons" style="font-size:18px">unfold_less</span>
+          <button id="toggleAllBtn" onclick="_tcToggleAll()" style="display:none" class="btn-icon" data-tip="Expand all histories">
+            <span id="toggleAllIcon" class="material-icons" style="font-size:18px">unfold_more</span>
           </button>
         </div>
       </div>
