@@ -311,14 +311,33 @@
   }
   .tracker-interval .material-icons { font-size: 13px; flex-shrink: 0; }
   .tracker-meta-icons {
-    display: flex; align-items: center; gap: 5px;
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
   }
   .tracker-meta-icon {
     display: flex; align-items: center; color: var(--primary); opacity: 0.75;
   }
   .tracker-meta-pipe {
-    width: 1px; height: 14px; background: var(--on-surface-light); opacity: 0.4; flex-shrink: 0;
+    width: 1px; align-self: stretch; background: var(--on-surface-light); opacity: 0.4; flex-shrink: 0;
   }
+
+  /* FILTER PILLS */
+  .filter-pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 4px 10px;
+    border-radius: 16px;
+    border: 1.5px solid var(--divider);
+    background: transparent;
+    color: var(--on-surface-medium);
+    font-size: 12px; font-family: inherit; font-weight: 500;
+    cursor: pointer; user-select: none; white-space: nowrap;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .filter-pill .material-icons { font-size: 14px; }
+  .filter-pill:hover { background: var(--background); color: var(--on-surface); }
+  .filter-pill--unread.active  { background: var(--warning); color: #fff; border-color: var(--warning); }
+  .filter-pill--flagged.active { background: #7c4dff; color: #fff; border-color: #7c4dff; }
+  .filter-pill--active.active  { background: var(--primary); color: #fff; border-color: var(--primary); }
+  .filter-pill--ai.active      { background: var(--primary); color: #fff; border-color: var(--primary); }
   .tracker-times {
     display: flex; flex-direction: column; align-items: stretch; gap: 2px;
   }

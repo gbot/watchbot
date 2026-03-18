@@ -637,10 +637,10 @@ function showApp() {
   if (_toISel) _toISel.innerHTML = _intervalOptionsHTML(_getIntervalOptions(), null);
 
   // Sync filter state with whatever the browser restored on reload
-  showChangedOnly = document.getElementById('showChangedOnlyChk')?.checked ?? false;
-  showActiveOnly  = document.getElementById('showActiveOnlyChk')?.checked  ?? false;
-  showAIOnly      = document.getElementById('showAIOnlyChk')?.checked      ?? false;
-  showFlaggedOnly = document.getElementById('showFlaggedOnlyChk')?.checked ?? false;
+  showChangedOnly = false;
+  showActiveOnly  = false;
+  showAIOnly      = false;
+  showFlaggedOnly = false;
   trackerFilter   = (document.getElementById('trackerSearch')?.value ?? '').trim().toLowerCase();
   connectSSE();
 }
@@ -3196,14 +3196,10 @@ function clearAllFilters() {
   showFlaggedOnly = false;
   const search = document.getElementById('trackerSearch');
   if (search) search.value = '';
-  const changedChk = document.getElementById('showChangedOnlyChk');
-  if (changedChk) changedChk.checked = false;
-  const activeChk = document.getElementById('showActiveOnlyChk');
-  if (activeChk) activeChk.checked = false;
-  const aiChk = document.getElementById('showAIOnlyChk');
-  if (aiChk) aiChk.checked = false;
-  const flaggedChk = document.getElementById('showFlaggedOnlyChk');
-  if (flaggedChk) flaggedChk.checked = false;
+  document.getElementById('showChangedOnlyPill')?.classList.remove('active');
+  document.getElementById('showActiveOnlyPill')?.classList.remove('active');
+  document.getElementById('showAIOnlyPill')?.classList.remove('active');
+  document.getElementById('showFlaggedOnlyPill')?.classList.remove('active');
   renderTrackers();
 }
 
@@ -3228,22 +3224,26 @@ function _expandHistoryForGlobalChangeFilters() {
 
 function setShowChangedOnly(checked) {
   showChangedOnly = checked;
+  document.getElementById('showChangedOnlyPill')?.classList.toggle('active', checked);
   if (showChangedOnly || showFlaggedOnly) _expandHistoryForGlobalChangeFilters();
   renderTrackers();
 }
 
 function setShowActiveOnly(checked) {
   showActiveOnly = checked;
+  document.getElementById('showActiveOnlyPill')?.classList.toggle('active', checked);
   renderTrackers();
 }
 
 function setShowAIOnly(checked) {
   showAIOnly = checked;
+  document.getElementById('showAIOnlyPill')?.classList.toggle('active', checked);
   renderTrackers();
 }
 
 function setShowFlaggedOnly(checked) {
   showFlaggedOnly = checked;
+  document.getElementById('showFlaggedOnlyPill')?.classList.toggle('active', checked);
   if (showChangedOnly || showFlaggedOnly) _expandHistoryForGlobalChangeFilters();
   renderTrackers();
 }
