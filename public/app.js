@@ -3009,8 +3009,7 @@ async function dismissAll() {
   // Clear the "Show unread" filter so trackers don't all vanish after marking read
   if (showChangedOnly) {
     showChangedOnly = false;
-    const chk = document.getElementById('showChangedOnlyChk');
-    if (chk) chk.checked = false;
+    document.getElementById('showChangedOnlyPill')?.classList.remove('active');
     renderTrackers();
   }
 }
