@@ -156,32 +156,26 @@
           <span class="material-icons" style="font-size:20px">refresh</span>
         </button>
       </div>
-      <div style="display:flex;gap:10px;align-items:center;border-left:1px solid var(--divider);padding-left:8px;margin-left:2px">
-        <button id="dismissAllBtn" onclick="confirmMarkAllRead()" style="display:none;font-size:13px;padding:4px 10px;color:var(--warning)" class="btn btn-text" data-tip="Mark all changes as read">
+      <div style="display:flex;gap:6px;align-items:center;border-left:1px solid var(--divider);padding-left:8px;margin-left:2px">
+        <button id="dismissAllBtn" onclick="confirmMarkAllRead()" style="display:none;font-size:13px;padding:4px 10px;color:var(--warning)" class="btn btn-text" data-tip="Mark all updates as read">
           <span class="material-icons" style="font-size:15px;vertical-align:middle">done_all</span> Mark all read
         </button>
-        <label style="display:flex;align-items:center;gap:5px;font-size:13px;color:var(--on-surface-medium);cursor:pointer;user-select:none">
-          <input type="checkbox" id="showChangedOnlyChk" onchange="setShowChangedOnly(this.checked)" style="accent-color:var(--warning);width:15px;height:15px">
-          Show unread
-        </label>
-        <label style="display:flex;align-items:center;gap:5px;font-size:13px;color:var(--on-surface-medium);cursor:pointer;user-select:none">
-          <input type="checkbox" id="showFlaggedOnlyChk" onchange="setShowFlaggedOnly(this.checked)" style="accent-color:#7c4dff;width:15px;height:15px">
-          Show flagged
-        </label>
-        <label style="display:flex;align-items:center;gap:5px;font-size:13px;color:var(--on-surface-medium);cursor:pointer;user-select:none">
-          <input type="checkbox" id="showActiveOnlyChk" onchange="setShowActiveOnly(this.checked)" style="accent-color:var(--primary);width:15px;height:15px">
-          Show active
-        </label>
-        <label style="display:flex;align-items:center;gap:5px;font-size:13px;color:var(--on-surface-medium);cursor:pointer;user-select:none">
-          <input type="checkbox" id="showAIOnlyChk" onchange="setShowAIOnly(this.checked)" style="accent-color:var(--primary);width:15px;height:15px">
-          AI enabled
-        </label>
+        <span style="font-size:12px;color:var(--on-surface-medium);white-space:nowrap;user-select:none">Filter:</span>
+        <button id="showChangedOnlyPill" class="filter-pill filter-pill--unread" onclick="setShowChangedOnly(!showChangedOnly)" data-tip="Show unread only">
+          <span class="material-icons">mark_as_unread</span>Unread
+        </button>
+        <button id="showFlaggedOnlyPill" class="filter-pill filter-pill--flagged" onclick="setShowFlaggedOnly(!showFlaggedOnly)" data-tip="Show flagged only">
+          <span class="material-icons">flag</span>Flagged
+        </button>
+        <button id="showActiveOnlyPill" class="filter-pill filter-pill--active" onclick="setShowActiveOnly(!showActiveOnly)" data-tip="Show active only">
+          <span class="material-icons">bolt</span>Active
+        </button>
+        <button id="showAIOnlyPill" class="filter-pill filter-pill--ai" onclick="setShowAIOnly(!showAIOnly)" data-tip="Show AI-enabled only">
+          <span class="material-icons">auto_awesome</span>AI
+        </button>
         <div style="display:flex;gap:2px;align-items:center;border-left:1px solid var(--divider);padding-left:8px;margin-left:2px">
-          <button id="expandAllBtn" onclick="_tcExpandAll()" style="display:none" class="btn-icon" data-tip="Expand all histories">
-            <span class="material-icons" style="font-size:18px">unfold_more</span>
-          </button>
-          <button id="collapseAllBtn" onclick="_tcCollapseAll()" style="display:none" class="btn-icon" data-tip="Collapse all histories">
-            <span class="material-icons" style="font-size:18px">unfold_less</span>
+          <button id="toggleAllBtn" onclick="_tcToggleAll()" style="display:none" class="btn-icon" data-tip="Expand all histories">
+            <span id="toggleAllIcon" class="material-icons" style="font-size:18px">unfold_more</span>
           </button>
         </div>
       </div>
@@ -825,7 +819,7 @@
       <div class="confirm-icon" style="background:rgba(255,171,0,0.12);color:var(--warning)"><span class="material-icons">done_all</span></div>
       <h3 class="confirm-title" id="markAllReadTitle">Mark all read?</h3>
     </div>
-    <p class="confirm-message" id="markAllReadMessage">Mark all changes as read? This will clear the unread status across all WatchBots.</p>
+    <p class="confirm-message" id="markAllReadMessage">Mark all updates as read? This will clear the unread status across all WatchBots.</p>
     <div class="confirm-actions">
       <button type="button" class="btn btn-text" id="markAllReadCancelBtn">Cancel</button>
       <button type="button" class="btn btn-primary" id="markAllReadConfirmBtn" style="background:var(--warning);color:#000">
