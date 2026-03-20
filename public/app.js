@@ -6,7 +6,7 @@ let evtSource   = null;
 let confirmResolver   = null;
 let confirmKeyHandler = null;
 let _authResetToken   = '';
-let siteSettings      = { allowRegistration: true, maintenanceMode: false, userIntervalOptions: [] };
+let siteSettings      = { allowRegistration: true, maintenanceMode: false };
 let _sseProbePending  = false;
 
 // Profiles state
@@ -103,12 +103,12 @@ const INTERVAL_OPTIONS_ADMIN = [
   { ms:  259200000, label: '3 days'    },
   { ms:  604800000, label: '7 days'    },
 ];
-// NOTE: user interval options are now dynamic, driven by the admin
-// "User interval options" site setting. Use _getIntervalOptions() everywhere.
+// NOTE: user interval options are now plan-based, derived from currentUser.planIntervalOptions.
+// Use _getIntervalOptions() everywhere.
 
 function _getIntervalOptions() {
   if (currentUser?.role === 'admin') return INTERVAL_OPTIONS_ADMIN;
-  const allowed = siteSettings?.userIntervalOptions;
+  const allowed = currentUser?.planIntervalOptions;
   if (!allowed?.length) return INTERVAL_OPTIONS_ADMIN; // safe fallback
   return INTERVAL_OPTIONS_ADMIN.filter(o => allowed.includes(o.ms));
 }
@@ -630,11 +630,15 @@ function showApp() {
   applyPanelPrefs(currentUser);
   // Restore cached AI finder results if any
   _aiCacheRestore();
-  // Populate interval selects based on current user's role + admin-configured user options
+  // Populate interval selects based on current user's role + plan interval options
   const _iSel = document.getElementById('intervalSelect');
   if (_iSel) _iSel.innerHTML = _intervalOptionsHTML(_getIntervalOptions(), null);
   const _toISel = document.getElementById('toIntervalSelect');
   if (_toISel) _toISel.innerHTML = _intervalOptionsHTML(_getIntervalOptions(), null);
+
+  // Show/hide manual check buttons based on role — only admins can trigger checks manually
+  const checkAllBtn = document.getElementById('checkAllBtn');
+  if (checkAllBtn) checkAllBtn.style.display = currentUser.role === 'admin' ? '' : 'none';
 
   // Sync filter state with whatever the browser restored on reload
   showChangedOnly = document.getElementById('showChangedOnlyChk')?.checked ?? false;
@@ -765,7 +769,7 @@ let adminCurrentTab = 'users';
 
 async function openAdminPanel() {
   // Clear cache and reset search/page/selection state every time the panel opens
-  _adminCache            = { users: null, trackers: null, userMap: null, settings: null, siteStats: null };
+  _adminCache            = { users: null, trackers: null, userMap: null, settings: null, siteStats: null, plans: null };
   adminUsersSearchVal    = '';
   adminUsersPage         = 0;
   adminTrackersSearchVal = '';
@@ -799,6 +803,7 @@ function switchAdminTab(tab) {
     t.classList.toggle('active', t.dataset.tab === tab)
   );
   document.getElementById('adminUsersTab').style.display    = tab === 'users'    ? '' : 'none';
+  document.getElementById('adminPlansTab').style.display    = tab === 'plans'    ? '' : 'none';
   document.getElementById('adminTrackersTab').style.display = tab === 'trackers' ? '' : 'none';
   document.getElementById('adminSettingsTab').style.display = tab === 'settings' ? '' : 'none';
   document.getElementById('adminSiteTab').style.display     = tab === 'site'     ? '' : 'none';
@@ -829,13 +834,26 @@ async function loadAdminTab(tab, forceRefresh = true) {
     renderAdminSiteTab(_adminCache.siteStats, _adminCache.settings || {});
     return;
   }
-  if (tab === 'users') {
-    if (forceRefresh || !_adminCache.users) {
-      const res = await fetch('/api/admin/users');
+  if (tab === 'plans') {
+    if (forceRefresh || !_adminCache.plans) {
+      const res = await fetch('/api/admin/plans');
       if (!res.ok) return;
-      _adminCache.users = await res.json();
+      _adminCache.plans = await res.json();
     }
-    renderAdminUsersTable(_adminCache.users);
+    _syncAdminNewPlanSelect();
+    renderAdminPlansTab(_adminCache.plans);
+    return;
+  }
+  if (tab === 'users') {
+    // Always load plans alongside users so the plan dropdown is populated
+    const [uRes, pRes] = await Promise.all([
+      (forceRefresh || !_adminCache.users) ? fetch('/api/admin/users') : Promise.resolve(null),
+      (forceRefresh || !_adminCache.plans) ? fetch('/api/admin/plans') : Promise.resolve(null),
+    ]);
+    if (uRes?.ok) _adminCache.users = await uRes.json();
+    if (pRes?.ok) _adminCache.plans = await pRes.json();
+    _syncAdminNewPlanSelect();
+    if (_adminCache.users) renderAdminUsersTable(_adminCache.users);
   } else {
     if (forceRefresh || !_adminCache.trackers) {
       const tRes = await fetch('/api/admin/trackers');
@@ -880,53 +898,6 @@ function renderAdminSettingsTab(s) {
             <input type="checkbox" ${s.aiEnabled ? 'checked' : ''} onchange="saveAdminSetting('aiEnabled', this.checked)">
             <span class="toggle-slider"></span>
           </label>
-        </div>
-
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding-bottom:16px;border-bottom:1px solid var(--divider)">
-          <div style="flex:1">
-            <div style="font-size:14px;font-weight:600">Default WatchBot limit</div>
-            <div style="font-size:12px;color:var(--on-surface-medium);margin-top:3px">Max WatchBots per user when no per-user override is set. <strong>0</strong> = unlimited.</div>
-          </div>
-          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
-            <input type="number" id="adminDefaultTrackerLimit" min="0" step="1" value="${s.defaultTrackerLimit}"
-              style="width:70px;padding:6px 8px;border:1px solid var(--divider);border-radius:8px;font-size:13px;background:var(--surface);color:var(--on-surface);text-align:right"
-              onchange="saveAdminSetting('defaultTrackerLimit', parseInt(this.value) || 0)" />
-          </div>
-        </div>
-
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding-bottom:16px;border-bottom:1px solid var(--divider)">
-          <div style="flex:1">
-            <div style="font-size:14px;font-weight:600">Change history retention cap</div>
-            <div style="font-size:12px;color:var(--on-surface-medium);margin-top:3px">Max unflagged change entries kept across all trackers. Oldest entries are pruned automatically. Flagged changes are never pruned. Minimum <strong>10</strong>.</div>
-          </div>
-          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
-            <input type="number" id="adminHistoryRetentionCap" min="10" step="10" value="${s.historyRetentionCap}"
-              style="width:70px;padding:6px 8px;border:1px solid var(--divider);border-radius:8px;font-size:13px;background:var(--surface);color:var(--on-surface);text-align:right"
-              onchange="saveAdminSetting('historyRetentionCap', Math.max(10, parseInt(this.value) || 500))" />
-          </div>
-        </div>
-
-        <div style="display:flex;flex-direction:column;gap:12px">
-          <div>
-            <div style="font-size:14px;font-weight:600">User interval options</div>
-            <div style="font-size:12px;color:var(--on-surface-medium);margin-top:3px">Select which check intervals are available to non-admin users when <strong>creating</strong> new WatchBots. Admins always have access to all intervals. Existing trackers are unaffected.</div>
-          </div>
-          <div style="display:flex;flex-wrap:wrap;gap:8px">
-            ${(() => {
-              const on = new Set(s.userIntervalOptions || []);
-              return INTERVAL_OPTIONS_ADMIN.map(o => {
-                const active  = on.has(o.ms);
-                const border  = active ? 'var(--primary)' : 'var(--divider)';
-                const bg      = active ? 'var(--primary)' : 'var(--surface)';
-                const color   = active ? '#fff'           : 'var(--on-surface-medium)';
-                const weight  = active ? '600'            : '400';
-                return '<button type="button"'
-                  + ' onclick="_setUserIntervalOptions(' + o.ms + ', ' + !active + ')"'
-                  + ' style="padding:5px 14px;border-radius:20px;font-family:inherit;cursor:pointer;transition:all 0.15s;line-height:1.4;font-size:13px;font-weight:' + weight + ';border:1.5px solid ' + border + ';background:' + bg + ';color:' + color + '">'
-                  + o.label + '</button>';
-              }).join('');
-            })()}
-          </div>
         </div>
 
       </div>
@@ -1075,6 +1046,12 @@ function renderAdminUsersTable(users) {
   adminUsersPage   = Math.min(adminUsersPage, totalPages - 1);
   const page = filtered.slice(adminUsersPage * ADMIN_PAGE_SIZE, (adminUsersPage + 1) * ADMIN_PAGE_SIZE);
 
+  // Build plan options HTML for dropdowns
+  const plans = _adminCache.plans || [];
+  const planOptionsHtml = plans.map(p =>
+    `<option value="${p.id}">${escHtml(p.label)}${p.isDefault ? ' (Default)' : ''}</option>`
+  ).join('');
+
   const tbody = document.getElementById('adminUsersBody');
   if (!filtered.length) {
     tbody.innerHTML = `<tr><td colspan="9" class="admin-empty">${q ? 'No users match your search.' : 'No users found.'}</td></tr>`;
@@ -1088,9 +1065,7 @@ function renderAdminUsersTable(users) {
           : '<span style="color:var(--on-surface-light)">—</span>'}</td>
         <td><span class="admin-role-badge admin-role-${u.role === 'admin' ? 'admin' : 'user'}">${u.role === 'admin' ? 'Admin' : 'User'}</span></td>
         <td>${u.trackerCount}</td>
-        <td>${u.id === currentUser.id ? '—' : `<input type="number" min="0" value="${u.trackerLimit ?? ''}" placeholder="∞"
-          style="width:56px;padding:3px 6px;border:1px solid var(--divider);border-radius:6px;font-size:12px;background:var(--surface)"
-          onchange="adminSetTrackerLimit('${u.id}', this.value)" title="Max WatchBots (0 or blank = unlimited)" />`}</td>
+        <td>${u.id === currentUser.id ? `<span style="font-size:12px;color:var(--on-surface-medium)">${escHtml(u.planLabel || 'Default')}</span>` : `<select style="padding:3px 6px;border:1px solid var(--divider);border-radius:6px;font-size:12px;background:var(--surface);color:var(--on-surface)" onchange="adminSetUserPlan('${u.id}', this.value)" title="Assign plan">${planOptionsHtml}</select>`}</td>
         <td>${u.id === currentUser.id ? '' : `<label class="toggle-switch" data-tip="${u.disabled ? 'Enable' : 'Disable'} account">
           <input type="checkbox" ${u.disabled ? '' : 'checked'} onchange="adminToggleDisabled('${u.id}', !this.checked)">
           <span class="toggle-track"></span>
@@ -1109,6 +1084,12 @@ function renderAdminUsersTable(users) {
             </button>
           </div>`}</td>
       </tr>`).join('');
+    // Set selected plan for each dropdown after rendering
+    page.forEach(u => {
+      if (u.id === currentUser.id) return;
+      const row = tbody.querySelector(`select[onchange*="${u.id}"]`);
+      if (row && u.planId) row.value = u.planId;
+    });
   }
   _syncAdminUsersSelectAll();
   _updateAdminUsersBulkBar();
@@ -1398,6 +1379,7 @@ async function adminAddUser() {
   const email    = document.getElementById('adminNewEmail').value.trim();
   const password = document.getElementById('adminNewPassword').value;
   const role     = document.getElementById('adminNewRole').value;
+  const planId   = document.getElementById('adminNewPlan')?.value || null;
   const msgEl    = document.getElementById('adminAddUserMsg');
   msgEl.textContent = '';
   msgEl.className   = 'profile-msg';
@@ -1418,7 +1400,7 @@ async function adminAddUser() {
   const res  = await fetch('/api/admin/users', {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ username, email, password, role }),
+    body:    JSON.stringify({ username, email, password, role, planId: planId || null }),
   });
   const data = await res.json();
   if (!res.ok) {
@@ -1433,6 +1415,7 @@ async function adminAddUser() {
     document.getElementById('adminNewEmail').value = '';
     document.getElementById('adminNewPassword').value = '';
     document.getElementById('adminNewRole').value = 'user';
+    if (document.getElementById('adminNewPlan')) document.getElementById('adminNewPlan').value = '';
     _renderPasswordStrength('adminNewPasswordStrength', '');
     loadAdminTab('users');
   }
@@ -1497,9 +1480,20 @@ function openEditUser(user) {
   document.getElementById('editUserNewPassword').value = '';
   _renderPasswordStrength('editUserPasswordStrength', '');
   document.getElementById('editUserRole').value = user.role;
-  document.getElementById('editUserLimit').value = user.trackerLimit ?? '';
   document.getElementById('editUserMsg').textContent = '';
   document.getElementById('editUserMsg').className = 'profile-msg';
+
+  // Populate plan dropdown
+  const planSel = document.getElementById('editUserPlan');
+  if (planSel) {
+    const plans = _adminCache.plans || [];
+    planSel.innerHTML = plans.map(p =>
+      `<option value="${p.id}">${escHtml(p.label)}${p.isDefault ? ' (Default)' : ''}</option>`
+    ).join('');
+    if (user.planId) planSel.value = user.planId;
+    else if (plans.length) planSel.value = plans.find(p => p.isDefault)?.id || plans[0].id;
+  }
+
   const overlay = document.getElementById('editUserOverlay');
   overlay.classList.add('show');
   overlay.setAttribute('aria-hidden', 'false');
@@ -1520,9 +1514,8 @@ async function saveEditUser() {
   const username = document.getElementById('editUserUsername').value.trim();
   const email = document.getElementById('editUserEmail').value.trim();
   const newPassword = document.getElementById('editUserNewPassword').value;
-  const role  = document.getElementById('editUserRole').value;
-  const limitRaw = document.getElementById('editUserLimit').value;
-  const trackerLimit = limitRaw === '' ? null : parseInt(limitRaw);
+  const role    = document.getElementById('editUserRole').value;
+  const planId  = document.getElementById('editUserPlan')?.value || null;
   const msgEl = document.getElementById('editUserMsg');
   msgEl.textContent = '';
   msgEl.className = 'profile-msg';
@@ -1560,7 +1553,7 @@ async function saveEditUser() {
   const res = await fetch(`/api/admin/users/${editUserId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, email, role, trackerLimit, ...(newPassword ? { newPassword } : {}) }),
+    body: JSON.stringify({ username, email, role, planId, ...(newPassword ? { newPassword } : {}) }),
   });
   const data = await res.json();
   if (!res.ok) {
@@ -1589,6 +1582,24 @@ async function adminToggleDisabled(id, disable) {
   }
 }
 
+async function adminSetUserPlan(id, planId) {
+  const res = await fetch(`/api/admin/users/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ planId: planId || null }),
+  });
+  if (res.ok) {
+    if (_adminCache.users) {
+      const u = _adminCache.users.find(u => u.id === id);
+      if (u) {
+        u.planId = planId || null;
+        u.planLabel = (_adminCache.plans || []).find(p => p.id === planId)?.label || null;
+      }
+    }
+    showSnackbar('Plan updated.');
+  } else { const d = await res.json(); showSnackbar(d.error || 'Update failed', 'error'); loadAdminTab('users'); }
+}
+
 async function adminSetTrackerLimit(id, value) {
   const limit = value === '' ? null : parseInt(value);
   const res = await fetch(`/api/admin/users/${id}`, {
@@ -1597,7 +1608,6 @@ async function adminSetTrackerLimit(id, value) {
     body: JSON.stringify({ trackerLimit: limit }),
   });
   if (res.ok) {
-    // Keep cache in sync so the edit modal reads the current value
     if (_adminCache.users) {
       const u = _adminCache.users.find(u => u.id === id);
       if (u) u.trackerLimit = limit;
@@ -1632,6 +1642,248 @@ async function adminDeleteTracker(id, label) {
     showSnackbar('WatchBot deleted.');
     loadAdminTab('trackers');
   } else { const d = await res.json(); showSnackbar(d.error || 'Delete failed', 'error'); }
+}
+
+// ─── ADMIN PLANS ──────────────────────────────────────────────────────────────
+let _editPlanId = null;
+
+const _ALL_INTERVAL_OPTIONS = [
+  { ms: 60000,     label: '1 min'   },
+  { ms: 300000,    label: '5 min'   },
+  { ms: 900000,    label: '15 min'  },
+  { ms: 1800000,   label: '30 min'  },
+  { ms: 3600000,   label: '1 hr'    },
+  { ms: 14400000,  label: '4 hr'    },
+  { ms: 21600000,  label: '6 hr'    },
+  { ms: 43200000,  label: '12 hr'   },
+  { ms: 86400000,  label: '1 day'   },
+  { ms: 259200000, label: '3 days'  },
+  { ms: 604800000, label: '1 week'  },
+];
+
+function renderAdminPlansTab(plans) {
+  const el = document.getElementById('adminPlansTab');
+  if (!el) return;
+
+  const fmtLimit   = v => (!v || v === 0) ? '∞' : v;
+  const fmtIntervals = arr => (arr || []).map(ms => {
+    const opt = _ALL_INTERVAL_OPTIONS.find(o => o.ms === ms);
+    return opt ? opt.label : ms;
+  }).join(', ');
+
+  el.innerHTML = `
+    <div style="max-width:760px">
+      <h4 style="font-size:13px;font-weight:700;color:var(--on-surface-medium);text-transform:uppercase;letter-spacing:0.6px;margin:12px 0 16px">User Plans</h4>
+      <p style="font-size:13px;color:var(--on-surface-medium);margin:0 0 16px">
+        Plans define WatchBot limits, available check intervals, update retention, and profile limits for user accounts.
+        Assign plans to users in the <strong>Users</strong> tab. The Default plan cannot be deleted.
+      </p>
+
+      <!-- Create plan form -->
+      <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;padding:12px 0 16px;border-bottom:1px solid var(--divider);margin-bottom:16px">
+        <div class="field" style="flex:1;min-width:140px;gap:4px">
+          <label style="font-size:11px;font-weight:600;color:var(--on-surface-medium);text-transform:uppercase;letter-spacing:0.5px">Plan name</label>
+          <input type="text" id="adminNewPlanLabel" placeholder="e.g. Free, Pro" autocomplete="off"
+            style="padding:7px 10px;border:1px solid var(--divider);border-radius:8px;font-size:13px;background:var(--surface);color:var(--on-surface)" />
+        </div>
+        <div class="field" style="min-width:80px;gap:4px">
+          <label style="font-size:11px;font-weight:600;color:var(--on-surface-medium);text-transform:uppercase;letter-spacing:0.5px">Bot limit</label>
+          <input type="number" id="adminNewPlanTrackerLimit" min="0" value="0" placeholder="0=∞"
+            style="padding:7px 10px;border:1px solid var(--divider);border-radius:8px;font-size:13px;background:var(--surface);color:var(--on-surface);width:70px" />
+        </div>
+        <div class="field" style="min-width:80px;gap:4px">
+          <label style="font-size:11px;font-weight:600;color:var(--on-surface-medium);text-transform:uppercase;letter-spacing:0.5px">Retention</label>
+          <input type="number" id="adminNewPlanRetention" min="10" value="500" placeholder="500"
+            style="padding:7px 10px;border:1px solid var(--divider);border-radius:8px;font-size:13px;background:var(--surface);color:var(--on-surface);width:70px" />
+        </div>
+        <div class="field" style="min-width:80px;gap:4px">
+          <label style="font-size:11px;font-weight:600;color:var(--on-surface-medium);text-transform:uppercase;letter-spacing:0.5px">Profiles</label>
+          <input type="number" id="adminNewPlanProfiles" min="1" value="10" placeholder="10"
+            style="padding:7px 10px;border:1px solid var(--divider);border-radius:8px;font-size:13px;background:var(--surface);color:var(--on-surface);width:60px" />
+        </div>
+        <button class="btn btn-primary" style="height:36px;white-space:nowrap" onclick="adminCreatePlan()">
+          <span class="material-icons" style="font-size:16px">add</span> Create plan
+        </button>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin:-4px 0 16px" id="adminNewPlanIntervalsWrap">
+        <span style="font-size:11px;font-weight:600;color:var(--on-surface-medium);text-transform:uppercase;letter-spacing:0.5px;align-self:center;width:100%;margin-bottom:2px">Intervals for new plan</span>
+        ${_ALL_INTERVAL_OPTIONS.map(o => `<button type="button" class="plan-interval-btn" data-ms="${o.ms}" data-selected="1"
+          onclick="_toggleNewPlanInterval(this)"
+          style="padding:4px 12px;border-radius:20px;font-size:12px;font-family:inherit;cursor:pointer;border:1.5px solid var(--primary);background:var(--primary);color:#fff;font-weight:600">${o.label}</button>`).join('')}
+      </div>
+      <p class="profile-msg" id="adminCreatePlanMsg" style="margin:0 0 12px"></p>
+
+      <!-- Plans table -->
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Bot limit</th>
+            <th>Profiles</th>
+            <th>Retention</th>
+            <th>Intervals</th>
+            <th>Users</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${plans.map(p => `
+          <tr>
+            <td><strong>${escHtml(p.label)}</strong>${p.isDefault ? ' <span class="admin-badge" style="font-size:10px;padding:1px 7px;background:var(--primary);color:#fff;border-radius:10px">Default</span>' : ''}</td>
+            <td>${fmtLimit(p.trackerLimit)}</td>
+            <td>${p.profileLimit || 10}</td>
+            <td>${p.retentionCap}</td>
+            <td style="font-size:12px;color:var(--on-surface-medium)">${fmtIntervals(p.intervalOptions)}</td>
+            <td>${p.userCount}</td>
+            <td>
+              <div class="btn-group">
+                <button class="btn-icon" style="color:var(--on-surface-medium)" data-tip="Edit plan" onclick="openEditPlan('${p.id}')">
+                  <span class="material-icons" style="font-size:18px">edit</span>
+                </button>
+                ${!p.isDefault ? `<button class="btn-icon" style="color:var(--error)" data-tip="Delete plan" onclick="adminDeletePlan('${p.id}', '${escHtml(p.label)}')">
+                  <span class="material-icons" style="font-size:18px">delete_outline</span>
+                </button>` : ''}
+              </div>
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function _toggleNewPlanInterval(btn) {
+  const selected = btn.dataset.selected === '1';
+  btn.dataset.selected = selected ? '0' : '1';
+  if (!selected) {
+    btn.style.background = 'var(--primary)'; btn.style.color = '#fff'; btn.style.borderColor = 'var(--primary)'; btn.style.fontWeight = '600';
+  } else {
+    btn.style.background = 'var(--surface)'; btn.style.color = 'var(--on-surface-medium)'; btn.style.borderColor = 'var(--divider)'; btn.style.fontWeight = '400';
+  }
+}
+
+async function adminCreatePlan() {
+  const label = document.getElementById('adminNewPlanLabel')?.value.trim();
+  const trackerLimit = parseInt(document.getElementById('adminNewPlanTrackerLimit')?.value) || 0;
+  const retentionCap = Math.max(parseInt(document.getElementById('adminNewPlanRetention')?.value) || 500, 10);
+  const profileLimit = Math.max(parseInt(document.getElementById('adminNewPlanProfiles')?.value) || 10, 1);
+  const intervalOptions = Array.from(document.querySelectorAll('#adminNewPlanIntervalsWrap .plan-interval-btn[data-selected="1"]'))
+    .map(btn => parseInt(btn.dataset.ms));
+  const msgEl = document.getElementById('adminCreatePlanMsg');
+  msgEl.textContent = ''; msgEl.className = 'profile-msg';
+
+  if (!label) { msgEl.textContent = 'Plan name is required.'; msgEl.classList.add('error'); return; }
+  if (intervalOptions.length === 0) { msgEl.textContent = 'At least one interval must be selected.'; msgEl.classList.add('error'); return; }
+
+  const res = await fetch('/api/admin/plans', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ label, trackerLimit, intervalOptions, retentionCap, profileLimit }),
+  });
+  const data = await res.json();
+  if (!res.ok) { msgEl.textContent = data.error || 'Failed to create plan.'; msgEl.classList.add('error'); return; }
+  showSnackbar(`Plan "${data.label}" created.`);
+  _adminCache.plans = null;
+  loadAdminTab('plans');
+}
+
+async function adminDeletePlan(id, label) {
+  const ok = await openDeleteConfirmDialog(`plan "${label}"`, 'Delete plan?');
+  if (!ok) return;
+  const res = await fetch(`/api/admin/plans/${id}`, { method: 'DELETE' });
+  if (res.ok) {
+    showSnackbar('Plan deleted.');
+    _adminCache.plans = null;
+    loadAdminTab('plans');
+  } else { const d = await res.json(); showSnackbar(d.error || 'Delete failed', 'error'); }
+}
+
+function openEditPlan(id) {
+  const plan = (_adminCache.plans || []).find(p => p.id === id);
+  if (!plan) { showSnackbar('Plan not found.', 'error'); return; }
+  _editPlanId = id;
+  document.getElementById('editPlanTitle').textContent = `Edit Plan: ${plan.label}`;
+  document.getElementById('editPlanLabel').value = plan.label;
+  document.getElementById('editPlanTrackerLimit').value = plan.trackerLimit || 0;
+  document.getElementById('editPlanRetentionCap').value = plan.retentionCap || 500;
+  document.getElementById('editPlanProfileLimit').value = plan.profileLimit || 10;
+  document.getElementById('editPlanMsg').textContent = '';
+  document.getElementById('editPlanMsg').className = 'profile-msg';
+
+  // Render interval checkboxes
+  const selected = new Set((plan.intervalOptions || []).map(Number));
+  const container = document.getElementById('editPlanIntervals');
+  container.innerHTML = _ALL_INTERVAL_OPTIONS.map(o => {
+    const on = selected.has(o.ms);
+    return `<button type="button" class="plan-interval-btn" data-ms="${o.ms}" data-selected="${on ? '1' : '0'}"
+      onclick="_toggleEditPlanInterval(this)"
+      style="padding:5px 14px;border-radius:20px;font-family:inherit;cursor:pointer;font-size:13px;
+             border:1.5px solid ${on ? 'var(--primary)' : 'var(--divider)'};
+             background:${on ? 'var(--primary)' : 'var(--surface)'};
+             color:${on ? '#fff' : 'var(--on-surface-medium)'};
+             font-weight:${on ? '600' : '400'}">${o.label}</button>`;
+  }).join('');
+
+  const overlay = document.getElementById('editPlanOverlay');
+  overlay.classList.add('show');
+  overlay.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('modal-open');
+}
+
+function _toggleEditPlanInterval(btn) {
+  const selected = btn.dataset.selected === '1';
+  btn.dataset.selected = selected ? '0' : '1';
+  if (!selected) {
+    btn.style.background = 'var(--primary)'; btn.style.color = '#fff'; btn.style.borderColor = 'var(--primary)'; btn.style.fontWeight = '600';
+  } else {
+    btn.style.background = 'var(--surface)'; btn.style.color = 'var(--on-surface-medium)'; btn.style.borderColor = 'var(--divider)'; btn.style.fontWeight = '400';
+  }
+}
+
+function closeEditPlan() {
+  const overlay = document.getElementById('editPlanOverlay');
+  overlay.classList.remove('show');
+  overlay.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('modal-open');
+  _editPlanId = null;
+}
+
+async function saveEditPlan() {
+  if (!_editPlanId) return;
+  const label = document.getElementById('editPlanLabel').value.trim();
+  const trackerLimit = parseInt(document.getElementById('editPlanTrackerLimit').value) || 0;
+  const retentionCap = Math.max(parseInt(document.getElementById('editPlanRetentionCap').value) || 500, 10);
+  const profileLimit = Math.max(parseInt(document.getElementById('editPlanProfileLimit').value) || 10, 1);
+  const intervalOptions = Array.from(document.querySelectorAll('#editPlanIntervals .plan-interval-btn[data-selected="1"]'))
+    .map(btn => parseInt(btn.dataset.ms));
+  const msgEl = document.getElementById('editPlanMsg');
+  msgEl.textContent = ''; msgEl.className = 'profile-msg';
+
+  if (!label) { msgEl.textContent = 'Plan name is required.'; msgEl.classList.add('error'); return; }
+  if (intervalOptions.length === 0) { msgEl.textContent = 'At least one interval must be selected.'; msgEl.classList.add('error'); return; }
+
+  const res = await fetch(`/api/admin/plans/${_editPlanId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ label, trackerLimit, intervalOptions, retentionCap, profileLimit }),
+  });
+  const data = await res.json();
+  if (!res.ok) { msgEl.textContent = data.error || 'Failed to save plan.'; msgEl.classList.add('error'); return; }
+  showSnackbar('Plan updated.');
+  closeEditPlan();
+  _adminCache.plans = null;
+  loadAdminTab('plans');
+}
+
+// Populate plan dropdown in the create-user form whenever plans are loaded
+function _syncAdminNewPlanSelect() {
+  const sel = document.getElementById('adminNewPlan');
+  if (!sel || !_adminCache.plans) return;
+  const currentVal = sel.value;
+  sel.innerHTML = (_adminCache.plans || []).map(p =>
+    `<option value="${p.id}">${escHtml(p.label)}${p.isDefault ? ' (Default)' : ''}</option>`
+  ).join('');
+  if (currentVal) sel.value = currentVal;
 }
 
 // ─── PROFILE ──────────────────────────────────────────────────────────────────
@@ -1787,8 +2039,9 @@ function renderProfilesDialog() {
   }).join('');
 
   const count = profiles.length;
-  const maxProfiles = 10;
-  if (countNote) countNote.textContent = `${count} / ${maxProfiles} profiles used`;
+  // Admins are unlimited; non-admins use their plan's profileLimit.
+  const maxProfiles = currentUser?.role === 'admin' ? Infinity : (currentUser?.planProfileLimit || 10);
+  if (countNote) countNote.textContent = `${count}${maxProfiles === Infinity ? '' : ' / ' + maxProfiles} profile${count === 1 ? '' : 's'} used`;
   if (createSection) createSection.style.display = count >= maxProfiles ? 'none' : '';
 }
 
@@ -3400,7 +3653,7 @@ function trackerHTML(t) {
         <a class="btn-icon tracker-action-icon material-icons" href="${escHtml(t.url)}" target="_blank" rel="noopener noreferrer" data-tip="Open URL in new tab" style="text-decoration:none">open_in_new</a>
         <button class="btn-icon tracker-action-icon material-icons" style="color:var(--error)" onclick="removeTracker('${t.id}')" data-tip="Remove">delete_outline</button>
         <button class="btn-icon tracker-action-icon material-icons" onclick="toggleEdit('${t.id}')" data-tip="Edit">edit</button>
-        <button class="btn-icon tracker-action-icon material-icons" onclick="checkTracker('${t.id}')" data-tip="Check now" ${t.status === 'checking' ? 'disabled' : ''}>refresh</button>
+        ${currentUser?.role === 'admin' ? `<button class="btn-icon tracker-action-icon material-icons" onclick="checkTracker('${t.id}')" data-tip="Check now" ${t.status === 'checking' ? 'disabled' : ''}>refresh</button>` : ''}
       </div>
     </div>
     ${editingId === t.id ? `
@@ -3432,8 +3685,11 @@ function trackerHTML(t) {
 }
 
 function updateBadge() {
-  const limit = currentUser && currentUser.trackerLimit ? currentUser.trackerLimit : null;
-  const limitNum = limit != null ? limit : '∞';
+  // Effective limit: individual override > plan limit > unlimited
+  const userLimit    = currentUser?.trackerLimit > 0 ? currentUser.trackerLimit : null;
+  const planLimit    = currentUser?.planTrackerLimit > 0 ? currentUser.planTrackerLimit : null;
+  const limit        = currentUser?.role === 'admin' ? null : (userLimit ?? planLimit);
+  const limitNum     = limit != null ? limit : '∞';
   const active = userTotalActiveTrackerCount;
   const total  = userTotalTrackerCount;
   const paused = total - active;
