@@ -559,16 +559,23 @@ function saveChange(change, userId) {
       WHERE c2.flagged = 0 AND t.userId = ?
     `).get(userId);
     if (c > cap) {
-      db.prepare(`
-        DELETE FROM changes WHERE flagged = 0
-        AND trackerId IN (SELECT id FROM trackers WHERE userId = ?)
-        AND id NOT IN (
-          SELECT c2.id FROM changes c2
-          JOIN trackers t ON c2.trackerId = t.id
-          WHERE c2.flagged = 0 AND t.userId = ?
-          ORDER BY c2.detectedAt DESC LIMIT ${cap}
-        )
-      `).run(userId, userId);
+      // SQLite does not support parameters in LIMIT inside subqueries in all
+      // versions, so we use a two-step approach: first collect the ids to keep,
+      // then delete everything else.
+      const keepIds = db.prepare(`
+        SELECT c2.id FROM changes c2
+        JOIN trackers t ON c2.trackerId = t.id
+        WHERE c2.flagged = 0 AND t.userId = ?
+        ORDER BY c2.detectedAt DESC LIMIT ?
+      `).all(userId, cap).map(r => r.id);
+      if (keepIds.length > 0) {
+        const placeholders = keepIds.map(() => '?').join(',');
+        db.prepare(`
+          DELETE FROM changes WHERE flagged = 0
+          AND trackerId IN (SELECT id FROM trackers WHERE userId = ?)
+          AND id NOT IN (${placeholders})
+        `).run(userId, ...keepIds);
+      }
     }
   }
 }
@@ -1186,6 +1193,9 @@ async function checkTracker(tracker) {
 // ─── USER INTERVAL OPTIONS & PLANS ──────────────────────────────────────────
 // Default allowed intervals for non-admin users. Plans override this per user.
 const _DEFAULT_USER_INTERVAL_OPTIONS = [3600000, 14400000, 21600000, 43200000, 86400000, 259200000, 604800000];
+const _DEFAULT_PLAN_TRACKER_LIMIT    = 0;    // 0 = unlimited
+const _DEFAULT_PLAN_RETENTION_CAP    = 500;
+const _DEFAULT_PLAN_PROFILE_LIMIT    = 10;
 
 // Returns the plan row for a given userId (falls back to the default plan).
 // intervalOptions is returned as a parsed number array for convenience.
@@ -1201,7 +1211,7 @@ function getUserPlan(userId) {
     if (!opts.length) opts = _DEFAULT_USER_INTERVAL_OPTIONS;
     return { ...row, intervalOptions: opts };
   }
-  return { id: null, label: 'Default', trackerLimit: 0, intervalOptions: _DEFAULT_USER_INTERVAL_OPTIONS, retentionCap: 500, profileLimit: 10, isDefault: 1 };
+  return { id: null, label: 'Default', trackerLimit: _DEFAULT_PLAN_TRACKER_LIMIT, intervalOptions: _DEFAULT_USER_INTERVAL_OPTIONS, retentionCap: _DEFAULT_PLAN_RETENTION_CAP, profileLimit: _DEFAULT_PLAN_PROFILE_LIMIT, isDefault: 1 };
 }
 
 // Returns the allowed interval list for a user (plan-aware). Admins are unrestricted.
@@ -1466,7 +1476,7 @@ function _buildUserResponse(userId, user, extra = {}) {
     planLabel:            plan.label,
     planIntervalOptions:  plan.intervalOptions,
     planTrackerLimit:     plan.trackerLimit || 0,
-    planProfileLimit:     plan.profileLimit > 0 ? plan.profileLimit : 10,
+    planProfileLimit:     plan.profileLimit > 0 ? plan.profileLimit : _DEFAULT_PLAN_PROFILE_LIMIT,
     ...extra,
   };
 }
@@ -2509,9 +2519,9 @@ app.patch('/api/trackers/:id', authMiddleware, (req, res) => {
 });
 
 app.post('/api/trackers/:id/check', authMiddleware, async (req, res) => {
-  if (req.role !== 'admin') return res.status(403).json({ error: 'Manual checks are not available for your account.' });
   const tracker = trackers.find(t => t.id === req.params.id && t.userId === req.userId);
   if (!tracker) return res.status(404).json({ error: 'Not found' });
+  if (req.role !== 'admin') return res.status(403).json({ error: 'Manual checks are not available for your account.' });
   const updated = await checkTracker(tracker);
   const { lastBody, ...safe } = updated;
   res.json(safe);

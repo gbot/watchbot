@@ -1065,7 +1065,7 @@ function renderAdminUsersTable(users) {
           : '<span style="color:var(--on-surface-light)">—</span>'}</td>
         <td><span class="admin-role-badge admin-role-${u.role === 'admin' ? 'admin' : 'user'}">${u.role === 'admin' ? 'Admin' : 'User'}</span></td>
         <td>${u.trackerCount}</td>
-        <td>${u.id === currentUser.id ? `<span style="font-size:12px;color:var(--on-surface-medium)">${escHtml(u.planLabel || 'Default')}</span>` : `<select style="padding:3px 6px;border:1px solid var(--divider);border-radius:6px;font-size:12px;background:var(--surface);color:var(--on-surface)" onchange="adminSetUserPlan('${u.id}', this.value)" title="Assign plan">${planOptionsHtml}</select>`}</td>
+        <td>${u.id === currentUser.id ? `<span style="font-size:12px;color:var(--on-surface-medium)">${escHtml(u.planLabel || 'Default')}</span>` : `<select data-userid="${u.id}" style="padding:3px 6px;border:1px solid var(--divider);border-radius:6px;font-size:12px;background:var(--surface);color:var(--on-surface)" onchange="adminSetUserPlan('${u.id}', this.value)" title="Assign plan">${planOptionsHtml}</select>`}</td>
         <td>${u.id === currentUser.id ? '' : `<label class="toggle-switch" data-tip="${u.disabled ? 'Enable' : 'Disable'} account">
           <input type="checkbox" ${u.disabled ? '' : 'checked'} onchange="adminToggleDisabled('${u.id}', !this.checked)">
           <span class="toggle-track"></span>
@@ -1087,7 +1087,7 @@ function renderAdminUsersTable(users) {
     // Set selected plan for each dropdown after rendering
     page.forEach(u => {
       if (u.id === currentUser.id) return;
-      const row = tbody.querySelector(`select[onchange*="${u.id}"]`);
+      const row = tbody.querySelector(`select[data-userid="${u.id}"]`);
       if (row && u.planId) row.value = u.planId;
     });
   }
