@@ -637,10 +637,10 @@ function showApp() {
   if (_toISel) _toISel.innerHTML = _intervalOptionsHTML(_getIntervalOptions(), null);
 
   // Sync filter state with whatever the browser restored on reload
-  showChangedOnly = document.getElementById('showChangedOnlyChk')?.checked ?? false;
-  showActiveOnly  = document.getElementById('showActiveOnlyChk')?.checked  ?? false;
-  showAIOnly      = document.getElementById('showAIOnlyChk')?.checked      ?? false;
-  showFlaggedOnly = document.getElementById('showFlaggedOnlyChk')?.checked ?? false;
+  showChangedOnly = false;
+  showActiveOnly  = false;
+  showAIOnly      = false;
+  showFlaggedOnly = false;
   trackerFilter   = (document.getElementById('trackerSearch')?.value ?? '').trim().toLowerCase();
   connectSSE();
 }
@@ -2522,7 +2522,7 @@ function _tcBuildHTML(t, cache) {
   const isNew      = t.status === 'changed';
   const collapsed  = _tcCollapsed.has(t.id);
   const toggleIcon = collapsed ? 'expand_more' : 'expand_less';
-  const toggleTitle = collapsed ? 'Show history' : 'Hide history';
+  const toggleTitle = collapsed ? 'Show updates' : 'Hide updates';
 
   const unreadCount  = cache?.loaded
     ? cache.items.filter(i => !i.dismissed).length
@@ -2532,7 +2532,7 @@ function _tcBuildHTML(t, cache) {
 
   let html = `<div class="tc-header">
     <span class="material-icons" style="font-size:16px;flex-shrink:0;color:var(--on-surface-medium)">history</span>
-    <span class="tc-title">History</span>
+    <span class="tc-title">Updates</span>
     <button class="tc-icon-btn tc-icon-btn-delete" data-tip="Delete all unflagged history" onclick="_tcDeleteHistory('${t.id}')" style="margin-left:16px">
       <span class="material-icons">delete_outline</span>
     </button>
@@ -2905,7 +2905,7 @@ function _tcToggleHistory(id) {
   if (icon) {
     icon.textContent = isCollapsed ? 'expand_less' : 'expand_more';
     const btn = icon.closest('.tc-icon-btn');
-    if (btn) btn.title = isCollapsed ? 'Hide history' : 'Show history';
+    if (btn) btn.title = isCollapsed ? 'Hide updates' : 'Show updates';
   }
   const body = container.querySelector('.tc-body');
   if (body) {
@@ -2948,16 +2948,27 @@ function _tcToggleHistory(id) {
   }
 }
 
-function _tcExpandAll() {
-  trackers.filter(t => t.changeCount > 0).forEach(t => {
-    if (_tcCollapsed.has(t.id)) _tcToggleHistory(t.id);
-  });
+function _tcToggleAll() {
+  const withHistory = trackers.filter(t => t.changeCount > 0 && _trackerMatchesViewFilters(t));
+  const anyCollapsed = withHistory.some(t => _tcCollapsed.has(t.id));
+  if (anyCollapsed) {
+    // Expand all that are currently collapsed
+    withHistory.forEach(t => { if (_tcCollapsed.has(t.id)) _tcToggleHistory(t.id); });
+  } else {
+    // All expanded – collapse everything
+    withHistory.forEach(t => { if (!_tcCollapsed.has(t.id)) _tcToggleHistory(t.id); });
+  }
+  _updateToggleAllBtn();
 }
 
-function _tcCollapseAll() {
-  trackers.filter(t => t.changeCount > 0).forEach(t => {
-    if (!_tcCollapsed.has(t.id)) _tcToggleHistory(t.id);
-  });
+function _updateToggleAllBtn() {
+  const btn  = document.getElementById('toggleAllBtn');
+  const icon = document.getElementById('toggleAllIcon');
+  if (!btn || !icon) return;
+  const withHistory  = trackers.filter(t => t.changeCount > 0 && _trackerMatchesViewFilters(t));
+  const anyCollapsed = withHistory.some(t => _tcCollapsed.has(t.id));
+  icon.textContent   = anyCollapsed ? 'unfold_more' : 'unfold_less';
+  btn.setAttribute('data-tip', 'Expand / collapse updates');
 }
 
 async function _tcDeleteHistory(id) {
@@ -3009,8 +3020,7 @@ async function dismissAll() {
   // Clear the "Show unread" filter so trackers don't all vanish after marking read
   if (showChangedOnly) {
     showChangedOnly = false;
-    const chk = document.getElementById('showChangedOnlyChk');
-    if (chk) chk.checked = false;
+    document.getElementById('showChangedOnlyPill')?.classList.remove('active');
     renderTrackers();
   }
 }
@@ -3196,14 +3206,10 @@ function clearAllFilters() {
   showFlaggedOnly = false;
   const search = document.getElementById('trackerSearch');
   if (search) search.value = '';
-  const changedChk = document.getElementById('showChangedOnlyChk');
-  if (changedChk) changedChk.checked = false;
-  const activeChk = document.getElementById('showActiveOnlyChk');
-  if (activeChk) activeChk.checked = false;
-  const aiChk = document.getElementById('showAIOnlyChk');
-  if (aiChk) aiChk.checked = false;
-  const flaggedChk = document.getElementById('showFlaggedOnlyChk');
-  if (flaggedChk) flaggedChk.checked = false;
+  document.getElementById('showChangedOnlyPill')?.classList.remove('active');
+  document.getElementById('showActiveOnlyPill')?.classList.remove('active');
+  document.getElementById('showAIOnlyPill')?.classList.remove('active');
+  document.getElementById('showFlaggedOnlyPill')?.classList.remove('active');
   renderTrackers();
 }
 
@@ -3228,22 +3234,26 @@ function _expandHistoryForGlobalChangeFilters() {
 
 function setShowChangedOnly(checked) {
   showChangedOnly = checked;
+  document.getElementById('showChangedOnlyPill')?.classList.toggle('active', checked);
   if (showChangedOnly || showFlaggedOnly) _expandHistoryForGlobalChangeFilters();
   renderTrackers();
 }
 
 function setShowActiveOnly(checked) {
   showActiveOnly = checked;
+  document.getElementById('showActiveOnlyPill')?.classList.toggle('active', checked);
   renderTrackers();
 }
 
 function setShowAIOnly(checked) {
   showAIOnly = checked;
+  document.getElementById('showAIOnlyPill')?.classList.toggle('active', checked);
   renderTrackers();
 }
 
 function setShowFlaggedOnly(checked) {
   showFlaggedOnly = checked;
+  document.getElementById('showFlaggedOnlyPill')?.classList.toggle('active', checked);
   if (showChangedOnly || showFlaggedOnly) _expandHistoryForGlobalChangeFilters();
   renderTrackers();
 }
@@ -3456,11 +3466,12 @@ function updateBadge() {
 
   const btn = document.getElementById('dismissAllBtn');
   if (btn) btn.style.display = trackers.some(t => t.status === 'changed') ? '' : 'none';
-  const hasHistory = trackers.some(t => t.changeCount > 0);
-  const expandBtn   = document.getElementById('expandAllBtn');
-  const collapseBtn = document.getElementById('collapseAllBtn');
-  if (expandBtn)   expandBtn.style.display   = hasHistory ? '' : 'none';
-  if (collapseBtn) collapseBtn.style.display = hasHistory ? '' : 'none';
+  const hasHistory    = trackers.some(t => t.changeCount > 0);
+  const toggleAllBtn  = document.getElementById('toggleAllBtn');
+  if (toggleAllBtn) {
+    toggleAllBtn.style.display = hasHistory ? '' : 'none';
+    _updateToggleAllBtn();
+  }
 }
 
 // ─── NOTIFICATIONS ────────────────────────────────────────────────────────────
