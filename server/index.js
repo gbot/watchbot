@@ -105,9 +105,12 @@ function passwordPolicyError(password, fieldLabel = 'Password') {
 
 // ─── CLAUDE MODEL RESOLVER ────────────────────────────────────────────────────
 const _modelAliases = {
+  'sonnet-4.6': 'claude-sonnet-4-6',
+  'sonnet4.6':  'claude-sonnet-4-6',
+  'sonnet-4-6': 'claude-sonnet-4-6',
   'sonnet-4':   'claude-sonnet-4-20250514',
   'sonnet4':    'claude-sonnet-4-20250514',
-  'sonnet':     'claude-sonnet-4-20250514',
+  'sonnet':     'claude-sonnet-4-6',
   'sonnet-3.5': 'claude-3-5-sonnet-20241022',
   'sonnet3.5':  'claude-3-5-sonnet-20241022',
   'sonnet-3':   'claude-3-5-sonnet-20241022',
@@ -120,7 +123,7 @@ const _modelAliases = {
   'haiku3.5':   'claude-3-5-haiku-20241022',
 };
 const CLAUDE_MODEL = (() => {
-  const rawInput = process.env.CLAUDE_MODEL || 'sonnet-4';
+  const rawInput = process.env.CLAUDE_MODEL || 'sonnet-4.6';
   const raw = rawInput.trim().toLowerCase();
   return _modelAliases[raw] || rawInput.trim();
 })();
@@ -129,7 +132,7 @@ log('✦', _c.magenta, `Claude model: ${CLAUDE_MODEL}`);
 // ─── PERSISTENCE (SQLite) ─────────────────────────────────────────────────────
 const Database = require('better-sqlite3');
 const DATA_DIR  = path.join(__dirname, '../data');
-const DB_PATH   = path.join(DATA_DIR, 'watchbot.db');
+const DB_PATH   = path.join(DATA_DIR, 'app.db');
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
@@ -233,6 +236,17 @@ db.exec(`
   );
 
   CREATE INDEX IF NOT EXISTS idx_profiles_userId ON profiles(userId);
+
+  CREATE TABLE IF NOT EXISTS plans (
+    id              TEXT PRIMARY KEY,
+    label           TEXT NOT NULL,
+    trackerLimit    INTEGER NOT NULL DEFAULT 0,
+    intervalOptions TEXT NOT NULL,
+    retentionCap    INTEGER NOT NULL DEFAULT 500,
+    profileLimit    INTEGER NOT NULL DEFAULT 10,
+    isDefault       INTEGER NOT NULL DEFAULT 0,
+    createdAt       TEXT NOT NULL
+  );
 `);
 
 // Migrations for existing DBs
@@ -248,6 +262,8 @@ try { db.prepare('ALTER TABLE trackers ADD COLUMN faviconUrl TEXT').run(); } cat
 try { db.prepare('ALTER TABLE trackers ADD COLUMN profileId TEXT').run(); } catch {}
 try { db.exec('ALTER TABLE users ADD COLUMN disableAiSummary INTEGER NOT NULL DEFAULT 0'); } catch {}
 try { db.exec('ALTER TABLE users ADD COLUMN activeProfileId TEXT'); } catch {}
+try { db.exec('ALTER TABLE users ADD COLUMN planId TEXT'); } catch {}
+try { db.exec('ALTER TABLE plans ADD COLUMN profileLimit INTEGER NOT NULL DEFAULT 10'); } catch {}
 
 // ─── STARTUP: ensure every user has a default profile ────────────────────────
 // This migration runs once when upgrading from a version without profiles.
@@ -268,6 +284,38 @@ try { db.exec('ALTER TABLE users ADD COLUMN activeProfileId TEXT'); } catch {}
     ).run(profileId, userId);
   });
   usersWithoutProfiles.forEach(u => migrateUser(u.id));
+})();
+
+// ─── STARTUP: ensure a default plan exists and all users have a plan ──────────
+(() => {
+  const _DEFAULT_INTERVALS = JSON.stringify([3600000, 14400000, 21600000, 43200000, 86400000, 259200000, 604800000]);
+  const existingDefault = db.prepare('SELECT id FROM plans WHERE isDefault = 1').get();
+  let defaultPlanId;
+  if (!existingDefault) {
+    // Migrate legacy global settings into the default plan if present
+    const legacyIntervals = (() => {
+      const stored = db.prepare("SELECT value FROM site_settings WHERE key = 'userIntervalOptions'").get();
+      if (!stored) return _DEFAULT_INTERVALS;
+      try {
+        const parsed = JSON.parse(stored.value);
+        if (Array.isArray(parsed) && parsed.length > 0) return stored.value;
+      } catch {}
+      return _DEFAULT_INTERVALS;
+    })();
+    const legacyCap = (() => {
+      const stored = db.prepare("SELECT value FROM site_settings WHERE key = 'historyRetentionCap'").get();
+      const v = parseInt(stored?.value || '500');
+      return (!isNaN(v) && v >= 10) ? v : 500;
+    })();
+    defaultPlanId = uuidv4();
+    db.prepare(
+      'INSERT INTO plans (id, label, trackerLimit, intervalOptions, retentionCap, profileLimit, isDefault, createdAt) VALUES (?, ?, ?, ?, ?, ?, 1, ?)'
+    ).run(defaultPlanId, 'Default', 0, legacyIntervals, legacyCap, 10, new Date().toISOString());
+  } else {
+    defaultPlanId = existingDefault.id;
+  }
+  // Assign the default plan to any users who have no plan yet
+  db.prepare('UPDATE users SET planId = ? WHERE planId IS NULL').run(defaultPlanId);
 })();
 
 // ─── SITE SETTINGS HELPERS ───────────────────────────────────────────────────
@@ -497,22 +545,41 @@ function _isMinorTextChange(oldText, newText) {
   return delta <= MINOR_ABS && (delta / total) <= MINOR_PCT;
 }
 
-function saveChange(change) {
+function saveChange(change, userId) {
   const snippetJson = change.snippet ? JSON.stringify(change.snippet) : null;
   db.prepare(`
     INSERT INTO changes (id, trackerId, trackerLabel, url, detectedAt, summary, oldHash, newHash, dismissed, soft, snippet, aiDisabledReason)
     VALUES (@id, @trackerId, @trackerLabel, @url, @detectedAt, @summary, @oldHash, @newHash, @dismissed, @soft, @snippet, @aiDisabledReason)
   `).run({ dismissed: 0, soft: 0, snippet: null, aiDisabledReason: null, ...change, snippet: snippetJson });
-  // Only prune when the unflagged pool actually exceeds the cap — avoids a
-  // redundant DELETE subquery scan on every save when well under the limit.
-  const cap = Math.max(parseInt(getSetting('historyRetentionCap', '500') || '500'), 10);
-  const { c } = db.prepare('SELECT COUNT(*) as c FROM changes WHERE flagged = 0').get();
-  if (c > cap) {
-    db.prepare(`
-      DELETE FROM changes WHERE flagged = 0 AND id NOT IN (
-        SELECT id FROM changes WHERE flagged = 0 ORDER BY detectedAt DESC LIMIT ${cap}
-      )
-    `).run();
+  // Prune per-user based on their plan's retentionCap — avoids a
+  // redundant DELETE subquery scan when well under the limit.
+  if (userId) {
+    const plan = getUserPlan(userId);
+    const cap = Math.max(plan.retentionCap || 500, 10);
+    const { c } = db.prepare(`
+      SELECT COUNT(*) as c FROM changes c2
+      JOIN trackers t ON c2.trackerId = t.id
+      WHERE c2.flagged = 0 AND t.userId = ?
+    `).get(userId);
+    if (c > cap) {
+      // SQLite does not support parameters in LIMIT inside subqueries in all
+      // versions, so we use a two-step approach: first collect the ids to keep,
+      // then delete everything else.
+      const keepIds = db.prepare(`
+        SELECT c2.id FROM changes c2
+        JOIN trackers t ON c2.trackerId = t.id
+        WHERE c2.flagged = 0 AND t.userId = ?
+        ORDER BY c2.detectedAt DESC LIMIT ?
+      `).all(userId, cap).map(r => r.id);
+      if (keepIds.length > 0) {
+        const placeholders = keepIds.map(() => '?').join(',');
+        db.prepare(`
+          DELETE FROM changes WHERE flagged = 0
+          AND trackerId IN (SELECT id FROM trackers WHERE userId = ?)
+          AND id NOT IN (${placeholders})
+        `).run(userId, ...keepIds);
+      }
+    }
   }
 }
 
@@ -1078,7 +1145,7 @@ async function checkTracker(tracker) {
         dismissed:    soft ? 1 : 0,
         soft:         soft ? 1 : 0,
         snippet,
-      });
+      }, tracker.userId);
 
       tracker.lastHash = hash;
       tracker.lastBody = structuredText;
@@ -1126,19 +1193,34 @@ async function checkTracker(tracker) {
   return tracker;
 }
 
-// ─── USER INTERVAL OPTIONS ───────────────────────────────────────────────────
-// Default allowed intervals for non-admin users (matches former MIN_INTERVAL_USER
-// behaviour — hour and above). Admin can change this via the Settings panel.
+// ─── USER INTERVAL OPTIONS & PLANS ──────────────────────────────────────────
+// Default allowed intervals for non-admin users. Plans override this per user.
 const _DEFAULT_USER_INTERVAL_OPTIONS = [3600000, 14400000, 21600000, 43200000, 86400000, 259200000, 604800000];
+const _DEFAULT_PLAN_TRACKER_LIMIT    = 0;    // 0 = unlimited
+const _DEFAULT_PLAN_RETENTION_CAP    = 500;
+const _DEFAULT_PLAN_PROFILE_LIMIT    = 10;
 
-function getUserAllowedIntervals() {
-  const stored = getSetting('userIntervalOptions', null);
-  if (!stored) return _DEFAULT_USER_INTERVAL_OPTIONS;
-  try {
-    const parsed = JSON.parse(stored);
-    if (Array.isArray(parsed) && parsed.length > 0) return parsed.map(Number);
-  } catch {}
-  return _DEFAULT_USER_INTERVAL_OPTIONS;
+// Returns the plan row for a given userId (falls back to the default plan).
+// intervalOptions is returned as a parsed number array for convenience.
+function getUserPlan(userId) {
+  const userRow = db.prepare('SELECT planId FROM users WHERE id = ?').get(userId);
+  const plan = userRow?.planId
+    ? db.prepare('SELECT * FROM plans WHERE id = ?').get(userRow.planId)
+    : null;
+  const row = plan || db.prepare('SELECT * FROM plans WHERE isDefault = 1').get();
+  if (row) {
+    let opts;
+    try { opts = JSON.parse(row.intervalOptions || '[]').map(Number); } catch { opts = _DEFAULT_USER_INTERVAL_OPTIONS; }
+    if (!opts.length) opts = _DEFAULT_USER_INTERVAL_OPTIONS;
+    return { ...row, intervalOptions: opts };
+  }
+  return { id: null, label: 'Default', trackerLimit: _DEFAULT_PLAN_TRACKER_LIMIT, intervalOptions: _DEFAULT_USER_INTERVAL_OPTIONS, retentionCap: _DEFAULT_PLAN_RETENTION_CAP, profileLimit: _DEFAULT_PLAN_PROFILE_LIMIT, isDefault: 1 };
+}
+
+// Returns the allowed interval list for a user (plan-aware). Admins are unrestricted.
+function getUserAllowedIntervals(userId) {
+  if (!userId) return _DEFAULT_USER_INTERVAL_OPTIONS;
+  return getUserPlan(userId).intervalOptions;
 }
 
 // ─── SCHEDULER ────────────────────────────────────────────────────────────────
@@ -1174,6 +1256,12 @@ function _drainCheckQueue() {
   }
 }
 
+// When true, startTrackerTimer suppresses the per-tracker log line. This is
+// set during the startup bulk-schedule loop and cleared afterwards so that
+// individual runtime schedules (new trackers, interval changes, etc.) continue
+// to be logged as normal.
+let _suppressSchedulerLog = false;
+
 function startTrackerTimer(tracker) {
   stopTrackerTimer(tracker.id);
   if (!tracker.active) return;
@@ -1181,7 +1269,9 @@ function startTrackerTimer(tracker) {
     const t = trackers.find(t => t.id === tracker.id);
     if (t && t.active) enqueueCheck(t);
   }, tracker.interval);
-  log('⏱', _c.blue, `Scheduled "${tracker.label}" every ${tracker.interval / 1000}s`);
+  if (!_suppressSchedulerLog) {
+    log('⏱', _c.blue, `Scheduled "${tracker.label}" every ${tracker.interval / 1000}s`);
+  }
 }
 
 function stopTrackerTimer(id) {
@@ -1267,9 +1357,8 @@ function adminMiddleware(req, res, next) {
 // ─── PUBLIC SETTINGS ENDPOINT ──────────────────────────────────────────────────
 app.get('/api/settings', (req, res) => {
   res.json({
-    allowRegistration:   getSetting('allowRegistration', '1') !== '0',
-    maintenanceMode:     getSetting('maintenanceMode',   '0') === '1',
-    userIntervalOptions: getUserAllowedIntervals(),
+    allowRegistration: getSetting('allowRegistration', '1') !== '0',
+    maintenanceMode:   getSetting('maintenanceMode',   '0') === '1',
   });
 });
 
@@ -1296,15 +1385,13 @@ app.post('/api/auth/register', async (req, res) => {
   if (existingEmail) return res.status(409).json({ error: 'An account with that email already exists' });
 
   const passwordHash = await bcrypt.hash(password, 12);
-  const initLimit = (() => {
-    const g = parseInt(getSetting('defaultTrackerLimit', '0') || '0');
-    return g > 0 ? g : null;
-  })();
+  const defaultPlanRow = db.prepare('SELECT id FROM plans WHERE isDefault = 1').get();
+  const defaultPlanId = defaultPlanRow?.id || null;
   const user = { id: uuidv4(), username: username.trim(), email: email.trim().toLowerCase(), passwordHash, createdAt: new Date().toISOString(), emailVerified: 0 };
   const defaultProfileId = uuidv4();
   db.transaction(() => {
-    db.prepare('INSERT INTO users (id, username, email, passwordHash, createdAt, trackerLimit, emailVerified, activeProfileId) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(user.id, user.username, user.email, user.passwordHash, user.createdAt, initLimit, user.emailVerified, defaultProfileId);
+    db.prepare('INSERT INTO users (id, username, email, passwordHash, createdAt, trackerLimit, emailVerified, activeProfileId, planId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(user.id, user.username, user.email, user.passwordHash, user.createdAt, null, user.emailVerified, defaultProfileId, defaultPlanId);
     db.prepare('INSERT INTO profiles (id, userId, name, isDefault, createdAt) VALUES (?, ?, ?, 1, ?)')
       .run(defaultProfileId, user.id, 'Default', user.createdAt);
   })();
@@ -1313,21 +1400,8 @@ app.post('/api/auth/register', async (req, res) => {
 
   const token = jwt.sign({ userId: user.id, username: user.username, role: 'user' }, JWT_SECRET, { expiresIn: '7d' });
   res.cookie('watchbot_auth', token, { httpOnly: true, sameSite: 'lax', maxAge: COOKIE_MAX_AGE });
-  res.status(201).json({
-    id: user.id,
-    username: user.username,
-    role: 'user',
-    notificationsEnabled: true,
-    hideAiFinder: false,
-    hideAddTracker: false,
-    changesMaxHeight: 0,
-    trackerLimit: initLimit,
-    disableAiSummary: false,
-    emailVerified: false,
-    verificationEmailSent,
-    gravatarUrl: gravatarUrl(user.email, 64),
-    activeProfileId: defaultProfileId,
-  });
+  const fullUser = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
+  res.status(201).json({ ..._buildUserResponse(user.id, fullUser), verificationEmailSent });
 });
 
 app.post('/api/auth/forgot-password', async (req, res) => {
@@ -1383,6 +1457,33 @@ app.post('/api/auth/verify-email', (req, res) => {
   res.json({ success: true });
 });
 
+// Build the public user object that is sent to the client on login / me / register.
+// Includes plan-derived fields (planIntervalOptions) so the frontend can enforce
+// the right interval options without a separate API call.
+function _buildUserResponse(userId, user, extra = {}) {
+  const plan = getUserPlan(userId);
+  return {
+    id: userId,
+    username: user.username,
+    role: user.role || 'user',
+    notificationsEnabled: user.notificationsEnabled !== 0,
+    hideAiFinder:         user.hideAiFinder   === 1,
+    hideAddTracker:       user.hideAddTracker  === 1,
+    changesMaxHeight:     user.changesMaxHeight || 0,
+    trackerLimit:         user.trackerLimit ?? null,
+    disableAiSummary:     user.disableAiSummary === 1,
+    emailVerified:        user.emailVerified === 1,
+    gravatarUrl:          gravatarUrl(user.email, 64),
+    activeProfileId:      user.activeProfileId || null,
+    planId:               user.planId || null,
+    planLabel:            plan.label,
+    planIntervalOptions:  plan.intervalOptions,
+    planTrackerLimit:     plan.trackerLimit || 0,
+    planProfileLimit:     plan.profileLimit > 0 ? plan.profileLimit : _DEFAULT_PLAN_PROFILE_LIMIT,
+    ...extra,
+  };
+}
+
 app.post('/api/auth/login', async (req, res) => {
   const identifierRaw = req.body?.identifier ?? req.body?.username ?? req.body?.email;
   const identifier = typeof identifierRaw === 'string' ? identifierRaw.trim() : '';
@@ -1418,20 +1519,7 @@ app.post('/api/auth/login', async (req, res) => {
   const token = jwt.sign({ userId: user.id, username: user.username, role: user.role || 'user' }, JWT_SECRET, { expiresIn: '7d' });
   res.cookie('watchbot_auth', token, { httpOnly: true, sameSite: 'lax', maxAge: COOKIE_MAX_AGE });
   res.clearCookie('watchbot_restore'); // clear any stale impersonation session
-  res.json({
-    id: user.id,
-    username: user.username,
-    role: user.role || 'user',
-    notificationsEnabled: user.notificationsEnabled !== 0,
-    hideAiFinder: user.hideAiFinder === 1,
-    hideAddTracker: user.hideAddTracker === 1,
-    changesMaxHeight: user.changesMaxHeight || 0,
-    trackerLimit: user.trackerLimit ?? null,
-    disableAiSummary: user.disableAiSummary === 1,
-    emailVerified: user.emailVerified === 1,
-    gravatarUrl: gravatarUrl(user.email, 64),
-    activeProfileId: user.activeProfileId || null,
-  });
+  res.json(_buildUserResponse(user.id, user));
 });
 
 app.post('/api/auth/logout', (req, res) => {
@@ -1450,22 +1538,12 @@ app.get('/api/auth/me', (req, res) => {
   }
   try {
     const payload = jwt.verify(token, JWT_SECRET);
-    const user = db.prepare('SELECT username, role, email, emailVerified, disabled, notificationsEnabled, hideAiFinder, hideAddTracker, changesMaxHeight, trackerLimit, disableAiSummary, activeProfileId FROM users WHERE id = ?').get(payload.userId);
+    const user = db.prepare('SELECT username, role, email, emailVerified, disabled, notificationsEnabled, hideAiFinder, hideAddTracker, changesMaxHeight, trackerLimit, disableAiSummary, activeProfileId, planId FROM users WHERE id = ?').get(payload.userId);
     if (!user || user.disabled) return res.status(401).json({ error: 'Not authenticated' });
     const role = user.role || 'user';
     if (getSetting('maintenanceMode', '0') === '1' && role !== 'admin')
       return res.status(503).json({ error: 'System maintenance in progress.' });
-    res.json({ id: payload.userId, username: user.username || payload.username, role,
-      notificationsEnabled: user.notificationsEnabled !== 0,
-      hideAiFinder:         user.hideAiFinder  === 1,
-      hideAddTracker:       user.hideAddTracker === 1,
-      changesMaxHeight:     user.changesMaxHeight || 0,
-      trackerLimit:         user.trackerLimit ?? null,
-      disableAiSummary:     user.disableAiSummary === 1,
-        emailVerified:        user.emailVerified === 1,
-      gravatarUrl:          gravatarUrl(user.email, 64),
-      activeProfileId:      user.activeProfileId || null,
-      ...(payload.impersonatedBy ? { impersonatedBy: payload.impersonatedBy } : {}) });
+    res.json(_buildUserResponse(payload.userId, user, payload.impersonatedBy ? { impersonatedBy: payload.impersonatedBy } : {}));
   } catch {
     res.status(401).json({ error: 'Invalid or expired session' });
   }
@@ -1693,7 +1771,6 @@ app.post('/api/auth/test-email', authMiddleware, async (req, res) => {
 });
 
 // ─── PROFILES ROUTES ─────────────────────────────────────────────────────────
-const MAX_PROFILES = 10;
 const MAX_PROFILE_NAME_LENGTH = 50;
 
 app.get('/api/profiles', authMiddleware, (req, res) => {
@@ -1715,8 +1792,13 @@ app.post('/api/profiles', authMiddleware, (req, res) => {
   if (!name) return res.status(400).json({ error: 'Profile name is required' });
   if (name.length > MAX_PROFILE_NAME_LENGTH) return res.status(400).json({ error: `Profile name must be ${MAX_PROFILE_NAME_LENGTH} characters or fewer` });
   const count = db.prepare('SELECT COUNT(*) as c FROM profiles WHERE userId = ?').get(req.userId).c;
-  if (count >= MAX_PROFILES)
-    return res.status(400).json({ error: `Maximum ${MAX_PROFILES} profiles allowed` });
+  // Admins are unrestricted; non-admins are subject to their plan's profileLimit.
+  if (req.role !== 'admin') {
+    const plan = getUserPlan(req.userId);
+    const limit = plan.profileLimit > 0 ? plan.profileLimit : 10;
+    if (count >= limit)
+      return res.status(400).json({ error: `Maximum ${limit} profile${limit === 1 ? '' : 's'} allowed on your plan` });
+  }
   const profile = {
     id: uuidv4(),
     userId: req.userId,
@@ -1794,35 +1876,22 @@ app.post('/api/profiles/:id/switch', authMiddleware, (req, res) => {
 // ─── ADMIN ROUTES ─────────────────────────────────────────────────────────────
 app.get('/api/admin/settings', adminMiddleware, (req, res) => {
   res.json({
-    allowRegistration:    getSetting('allowRegistration',    '1') !== '0',
-    aiEnabled:            getSetting('aiEnabled',            '1') !== '0',
-    maintenanceMode:      getSetting('maintenanceMode',      '0') === '1',
-    defaultTrackerLimit:  parseInt(getSetting('defaultTrackerLimit',  '0')   || '0'),
-    historyRetentionCap:  parseInt(getSetting('historyRetentionCap',  '500') || '500'),
-    userIntervalOptions:  getUserAllowedIntervals(),
+    allowRegistration:   getSetting('allowRegistration',   '1') !== '0',
+    aiEnabled:           getSetting('aiEnabled',           '1') !== '0',
+    maintenanceMode:     getSetting('maintenanceMode',     '0') === '1',
+    defaultTrackerLimit: parseInt(getSetting('defaultTrackerLimit', '0') || '0'),
   });
 });
 
 app.patch('/api/admin/settings', adminMiddleware, (req, res) => {
-  const allowed = ['allowRegistration', 'aiEnabled', 'maintenanceMode', 'defaultTrackerLimit', 'historyRetentionCap', 'userIntervalOptions'];
-  const VALID_INTERVALS = new Set([60000, 300000, 900000, 1800000, 3600000, 14400000, 21600000, 43200000, 86400000, 259200000, 604800000]);
+  const allowed = ['allowRegistration', 'aiEnabled', 'maintenanceMode', 'defaultTrackerLimit'];
   let maintenanceTurnedOn = false;
   for (const key of allowed) {
     if (!(key in req.body)) continue;
     const val = req.body[key];
-    if (key === 'userIntervalOptions') {
-      // Accept either a JSON string or a pre-parsed array from the client
-      let list;
-      try { list = typeof val === 'string' ? JSON.parse(val) : val; } catch { list = []; }
-      const clean = (Array.isArray(list) ? list : []).map(Number).filter(v => VALID_INTERVALS.has(v));
-      if (clean.length === 0)
-        return res.status(400).json({ error: 'At least one interval option must be enabled.' });
-      setSetting(key, JSON.stringify(clean));
-    } else {
-      setSetting(key, typeof val === 'boolean' ? (val ? '1' : '0') : String(val));
-      if (key === 'maintenanceMode' && (val === true || val === '1'))
-        maintenanceTurnedOn = true;
-    }
+    setSetting(key, typeof val === 'boolean' ? (val ? '1' : '0') : String(val));
+    if (key === 'maintenanceMode' && (val === true || val === '1'))
+      maintenanceTurnedOn = true;
   }
   // Push a maintenance_on event to all connected SSE clients so non-admin users
   // are kicked out immediately without needing a page reload.
@@ -1864,8 +1933,72 @@ app.post('/api/admin/kill-all-sessions', adminMiddleware, (req, res) => {
   res.json({ ok: true, sessionsTerminated: count });
 });
 
+// ─── ADMIN PLAN ROUTES ────────────────────────────────────────────────────────
+const VALID_PLAN_INTERVALS = new Set([60000, 300000, 900000, 1800000, 3600000, 14400000, 21600000, 43200000, 86400000, 259200000, 604800000]);
+
+app.get('/api/admin/plans', adminMiddleware, (req, res) => {
+  const plans = db.prepare('SELECT * FROM plans ORDER BY isDefault DESC, createdAt ASC').all();
+  const userCounts = {};
+  db.prepare('SELECT planId, COUNT(*) as c FROM users WHERE planId IS NOT NULL GROUP BY planId').all()
+    .forEach(r => { userCounts[r.planId] = r.c; });
+  res.json(plans.map(p => ({
+    ...p,
+    isDefault: p.isDefault === 1,
+    intervalOptions: (() => { try { return JSON.parse(p.intervalOptions || '[]').map(Number); } catch { return []; } })(),
+    userCount: userCounts[p.id] || 0,
+  })));
+});
+
+app.post('/api/admin/plans', adminMiddleware, (req, res) => {
+  const { label, trackerLimit, intervalOptions, retentionCap, profileLimit } = req.body;
+  if (!label?.trim()) return res.status(400).json({ error: 'Plan label is required' });
+  const limit = parseInt(trackerLimit) || 0;
+  if (limit < 0) return res.status(400).json({ error: 'Tracker limit must be 0 or greater' });
+  const cap = Math.max(parseInt(retentionCap) || 500, 10);
+  const profLimit = Math.max(parseInt(profileLimit) || 1, 1);
+  let intervals;
+  try { intervals = (Array.isArray(intervalOptions) ? intervalOptions : JSON.parse(intervalOptions || '[]')).map(Number).filter(v => VALID_PLAN_INTERVALS.has(v)); }
+  catch { intervals = []; }
+  if (intervals.length === 0) return res.status(400).json({ error: 'At least one interval option must be selected' });
+  const plan = { id: uuidv4(), label: label.trim(), trackerLimit: limit, intervalOptions: JSON.stringify(intervals), retentionCap: cap, profileLimit: profLimit, isDefault: 0, createdAt: new Date().toISOString() };
+  db.prepare('INSERT INTO plans (id, label, trackerLimit, intervalOptions, retentionCap, profileLimit, isDefault, createdAt) VALUES (?, ?, ?, ?, ?, ?, 0, ?)').run(plan.id, plan.label, plan.trackerLimit, plan.intervalOptions, plan.retentionCap, plan.profileLimit, plan.createdAt);
+  res.status(201).json({ ...plan, intervalOptions: intervals, isDefault: false });
+});
+
+app.patch('/api/admin/plans/:id', adminMiddleware, (req, res) => {
+  const plan = db.prepare('SELECT * FROM plans WHERE id = ?').get(req.params.id);
+  if (!plan) return res.status(404).json({ error: 'Plan not found' });
+  const { label, trackerLimit, intervalOptions, retentionCap, profileLimit } = req.body;
+  if (label !== undefined && !String(label).trim()) return res.status(400).json({ error: 'Plan label is required' });
+  if (trackerLimit !== undefined && parseInt(trackerLimit) < 0) return res.status(400).json({ error: 'Tracker limit must be 0 or greater' });
+  if (profileLimit !== undefined && parseInt(profileLimit) < 1) return res.status(400).json({ error: 'Profile limit must be at least 1' });
+  if (intervalOptions !== undefined) {
+    let intervals;
+    try { intervals = (Array.isArray(intervalOptions) ? intervalOptions : JSON.parse(intervalOptions || '[]')).map(Number).filter(v => VALID_PLAN_INTERVALS.has(v)); }
+    catch { intervals = []; }
+    if (intervals.length === 0) return res.status(400).json({ error: 'At least one interval option must be selected' });
+    db.prepare('UPDATE plans SET intervalOptions = ? WHERE id = ?').run(JSON.stringify(intervals), plan.id);
+  }
+  if (label !== undefined) db.prepare('UPDATE plans SET label = ? WHERE id = ?').run(String(label).trim(), plan.id);
+  if (trackerLimit !== undefined) db.prepare('UPDATE plans SET trackerLimit = ? WHERE id = ?').run(Math.max(parseInt(trackerLimit) || 0, 0), plan.id);
+  if (retentionCap !== undefined) db.prepare('UPDATE plans SET retentionCap = ? WHERE id = ?').run(Math.max(parseInt(retentionCap) || 500, 10), plan.id);
+  if (profileLimit !== undefined) db.prepare('UPDATE plans SET profileLimit = ? WHERE id = ?').run(Math.max(parseInt(profileLimit) || 1, 1), plan.id);
+  res.json({ success: true });
+});
+
+app.delete('/api/admin/plans/:id', adminMiddleware, (req, res) => {
+  const plan = db.prepare('SELECT * FROM plans WHERE id = ?').get(req.params.id);
+  if (!plan) return res.status(404).json({ error: 'Plan not found' });
+  if (plan.isDefault === 1) return res.status(400).json({ error: 'The default plan cannot be deleted' });
+  // Move users on this plan to the default plan
+  const defaultPlan = db.prepare('SELECT id FROM plans WHERE isDefault = 1').get();
+  if (defaultPlan) db.prepare('UPDATE users SET planId = ? WHERE planId = ?').run(defaultPlan.id, plan.id);
+  db.prepare('DELETE FROM plans WHERE id = ?').run(plan.id);
+  res.json({ success: true });
+});
+
 app.post('/api/admin/users', adminMiddleware, async (req, res) => {
-  const { username, email, password, role } = req.body;
+  const { username, email, password, role, planId } = req.body;
   if (!username?.trim() || !password)
     return res.status(400).json({ error: 'Username and password are required' });
   if (!email?.trim())
@@ -1886,27 +2019,34 @@ app.post('/api/admin/users', adminMiddleware, async (req, res) => {
   if (existingEmail) return res.status(409).json({ error: 'An account with that email already exists' });
 
   const passwordHash = await bcrypt.hash(password, 12);
-  const initLimit = (() => {
-    const g = parseInt(getSetting('defaultTrackerLimit', '0') || '0');
-    return g > 0 ? g : null;
+  // Resolve planId: use provided plan or fall back to default plan
+  const resolvedPlanId = (() => {
+    if (planId) {
+      const p = db.prepare('SELECT id FROM plans WHERE id = ?').get(planId);
+      if (p) return p.id;
+    }
+    const def = db.prepare('SELECT id FROM plans WHERE isDefault = 1').get();
+    return def?.id || null;
   })();
   const user = { id: uuidv4(), username: username.trim(), email: email.trim().toLowerCase(), passwordHash, role: assignedRole, createdAt: new Date().toISOString(), emailVerified: 0 };
   const adminDefaultProfileId = uuidv4();
   db.transaction(() => {
-    db.prepare('INSERT INTO users (id, username, email, passwordHash, role, createdAt, trackerLimit, emailVerified, activeProfileId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(user.id, user.username, user.email, user.passwordHash, user.role, user.createdAt, initLimit, user.emailVerified, adminDefaultProfileId);
+    db.prepare('INSERT INTO users (id, username, email, passwordHash, role, createdAt, trackerLimit, emailVerified, activeProfileId, planId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(user.id, user.username, user.email, user.passwordHash, user.role, user.createdAt, null, user.emailVerified, adminDefaultProfileId, resolvedPlanId);
     db.prepare('INSERT INTO profiles (id, userId, name, isDefault, createdAt) VALUES (?, ?, ?, 1, ?)')
       .run(adminDefaultProfileId, user.id, 'Default', user.createdAt);
   })();
   const verificationEmailSent = await sendEmailVerificationEmail(user, req);
-  res.status(201).json({ id: user.id, username: user.username, role: user.role, emailVerified: false, verificationEmailSent });
+  res.status(201).json({ id: user.id, username: user.username, role: user.role, emailVerified: false, planId: resolvedPlanId, verificationEmailSent });
 });
 
 app.get('/api/admin/users', adminMiddleware, (req, res) => {
-  const users = db.prepare('SELECT id, username, email, emailVerified, role, createdAt, disabled, trackerLimit FROM users ORDER BY createdAt ASC').all();
+  const users = db.prepare('SELECT id, username, email, emailVerified, role, createdAt, disabled, trackerLimit, planId FROM users ORDER BY createdAt ASC').all();
   const trackerCounts = {};
   trackers.forEach(t => { trackerCounts[t.userId] = (trackerCounts[t.userId] || 0) + 1; });
-  res.json(users.map(u => ({ ...u, emailVerified: u.emailVerified === 1, disabled: u.disabled === 1, trackerCount: trackerCounts[u.id] || 0, gravatarUrl: gravatarUrl(u.email, 40) })));
+  const plans = db.prepare('SELECT id, label FROM plans').all();
+  const planMap = Object.fromEntries(plans.map(p => [p.id, p.label]));
+  res.json(users.map(u => ({ ...u, emailVerified: u.emailVerified === 1, disabled: u.disabled === 1, trackerCount: trackerCounts[u.id] || 0, gravatarUrl: gravatarUrl(u.email, 40), planLabel: planMap[u.planId] || null })));
 });
 
 app.patch('/api/admin/users/:id', adminMiddleware, async (req, res) => {
@@ -1915,7 +2055,7 @@ app.patch('/api/admin/users/:id', adminMiddleware, async (req, res) => {
   const user = db.prepare('SELECT id FROM users WHERE id = ?').get(targetId);
   if (!user) return res.status(404).json({ error: 'User not found' });
 
-  const { disabled, trackerLimit, email, role, username, newPassword } = req.body;
+  const { disabled, trackerLimit, email, role, username, newPassword, planId } = req.body;
   let emailChanged = false;
 
   // ── Pre-validate everything before touching the DB ──────────────────────────
@@ -1924,6 +2064,11 @@ app.patch('/api/admin/users/:id', adminMiddleware, async (req, res) => {
     const limit = trackerLimit === null ? null : parseInt(trackerLimit);
     if (limit !== null && (isNaN(limit) || limit < 0))
       return res.status(400).json({ error: 'Invalid tracker limit' });
+  }
+
+  if (planId !== undefined && planId !== null) {
+    const planRow = db.prepare('SELECT id FROM plans WHERE id = ?').get(planId);
+    if (!planRow) return res.status(400).json({ error: 'Invalid plan' });
   }
 
   if (username !== undefined) {
@@ -1968,6 +2113,9 @@ app.patch('/api/admin/users/:id', adminMiddleware, async (req, res) => {
     if (trackerLimit !== undefined) {
       const limit = trackerLimit === null ? null : parseInt(trackerLimit);
       db.prepare('UPDATE users SET trackerLimit = ? WHERE id = ?').run(limit, targetId);
+    }
+    if (planId !== undefined) {
+      db.prepare('UPDATE users SET planId = ? WHERE id = ?').run(planId || null, targetId);
     }
     if (username !== undefined) {
       db.prepare('UPDATE users SET username = ? WHERE id = ?').run(String(username || '').trim(), targetId);
@@ -2065,7 +2213,7 @@ app.delete('/api/admin/trackers/:id', adminMiddleware, (req, res) => {
 app.post('/api/admin/impersonate/:id', adminMiddleware, (req, res) => {
   const targetId = req.params.id;
   if (targetId === req.userId) return res.status(400).json({ error: 'Cannot impersonate yourself' });
-  const target = db.prepare('SELECT id, username, role, email, emailVerified, disabled, notificationsEnabled, hideAiFinder, hideAddTracker, changesMaxHeight, trackerLimit, disableAiSummary, activeProfileId FROM users WHERE id = ?').get(targetId);
+  const target = db.prepare('SELECT id, username, role, email, emailVerified, disabled, notificationsEnabled, hideAiFinder, hideAddTracker, changesMaxHeight, trackerLimit, disableAiSummary, activeProfileId, planId FROM users WHERE id = ?').get(targetId);
   if (!target) return res.status(404).json({ error: 'User not found' });
   if (target.disabled) return res.status(400).json({ error: 'Cannot impersonate a disabled account' });
 
@@ -2079,17 +2227,7 @@ app.post('/api/admin/impersonate/:id', adminMiddleware, (req, res) => {
     JWT_SECRET, { expiresIn: '7d' }
   );
   res.cookie('watchbot_auth', impersonateToken, { httpOnly: true, sameSite: 'lax', maxAge: COOKIE_MAX_AGE });
-  res.json({ id: target.id, username: target.username, role: target.role || 'user',
-    notificationsEnabled: target.notificationsEnabled !== 0,
-    hideAiFinder: target.hideAiFinder === 1,
-    hideAddTracker: target.hideAddTracker === 1,
-    changesMaxHeight: target.changesMaxHeight || 0,
-    trackerLimit: target.trackerLimit ?? null,
-    disableAiSummary: target.disableAiSummary === 1,
-    emailVerified: target.emailVerified === 1,
-    gravatarUrl: gravatarUrl(target.email, 64),
-    activeProfileId: target.activeProfileId || null,
-    impersonatedBy: { id: req.userId, username: req.username } });
+  res.json({ ..._buildUserResponse(target.id, target), impersonatedBy: { id: req.userId, username: req.username } });
 });
 
 app.post('/api/admin/stop-impersonate', (req, res) => {
@@ -2105,17 +2243,8 @@ app.post('/api/admin/stop-impersonate', (req, res) => {
   }
   res.cookie('watchbot_auth', restoreToken, { httpOnly: true, sameSite: 'lax', maxAge: COOKIE_MAX_AGE });
   res.clearCookie('watchbot_restore');
-  const user = db.prepare('SELECT username, role, email, emailVerified, notificationsEnabled, hideAiFinder, hideAddTracker, changesMaxHeight, trackerLimit, disableAiSummary, activeProfileId FROM users WHERE id = ?').get(payload.userId);
-  res.json({ id: payload.userId, username: user?.username || payload.username, role: user?.role || 'admin',
-    notificationsEnabled: user?.notificationsEnabled !== 0,
-    hideAiFinder: user?.hideAiFinder === 1,
-    hideAddTracker: user?.hideAddTracker === 1,
-    changesMaxHeight: user?.changesMaxHeight || 0,
-    trackerLimit: user?.trackerLimit ?? null,
-    disableAiSummary: user?.disableAiSummary === 1,
-    emailVerified: user?.emailVerified === 1,
-    gravatarUrl: gravatarUrl(user?.email, 64),
-    activeProfileId: user?.activeProfileId || null });
+  const user = db.prepare('SELECT username, role, email, emailVerified, notificationsEnabled, hideAiFinder, hideAddTracker, changesMaxHeight, trackerLimit, disableAiSummary, activeProfileId, planId FROM users WHERE id = ?').get(payload.userId);
+  res.json(_buildUserResponse(payload.userId, user || { username: payload.username, role: 'admin' }));
 });
 
 // ─── FETCH PAGE TITLE ────────────────────────────────────────────────────────
@@ -2272,7 +2401,7 @@ app.post('/api/trackers', authMiddleware, async (req, res) => {
   // A missing/falsy interval defaults to the minimum allowed interval (non-admin) or 30 s (admin).
   let effectiveInterval;
   if (req.role !== 'admin') {
-    const allowed = getUserAllowedIntervals();
+    const allowed = getUserAllowedIntervals(req.userId);
     if (interval && !allowed.includes(Number(interval)))
       return res.status(400).json({ error: 'That check interval is not available. Please choose from the allowed options.' });
     effectiveInterval = (interval && allowed.includes(Number(interval))) ? Number(interval) : allowed[0];
@@ -2280,13 +2409,17 @@ app.post('/api/trackers', authMiddleware, async (req, res) => {
     effectiveInterval = interval || 30000;
   }
 
-  const userRow = db.prepare('SELECT trackerLimit FROM users WHERE id = ?').get(req.userId);
-  // null or 0 = unlimited; positive integer = hard cap. Global default is only applied at user creation.
-  const effectiveLimit = (userRow?.trackerLimit > 0) ? userRow.trackerLimit : null;
-  if (effectiveLimit !== null) {
-    const count = trackers.filter(t => t.userId === req.userId).length;
-    if (count >= effectiveLimit)
-      return res.status(403).json({ error: `WatchBot limit reached (${effectiveLimit})` });
+  // Determine tracker limit from user's plan (individual override takes priority).
+  if (req.role !== 'admin') {
+    const userRow = db.prepare('SELECT trackerLimit FROM users WHERE id = ?').get(req.userId);
+    const plan = getUserPlan(req.userId);
+    const effectiveLimit = (userRow?.trackerLimit > 0) ? userRow.trackerLimit
+      : (plan.trackerLimit > 0) ? plan.trackerLimit : null;
+    if (effectiveLimit !== null) {
+      const count = trackers.filter(t => t.userId === req.userId).length;
+      if (count >= effectiveLimit)
+        return res.status(403).json({ error: `WatchBot limit reached (${effectiveLimit})` });
+    }
   }
 
   const tracker = {
@@ -2370,7 +2503,7 @@ app.patch('/api/trackers/:id', authMiddleware, (req, res) => {
     const interval = Number(req.body.interval);
     if (!Number.isFinite(interval) || interval <= 0)
       return res.status(400).json({ error: 'Invalid interval' });
-    if (req.role !== 'admin' && !getUserAllowedIntervals().includes(interval)) {
+    if (req.role !== 'admin' && !getUserAllowedIntervals(req.userId).includes(interval)) {
       return res.status(400).json({ error: 'That check interval is not available. Please choose from the allowed options.' });
     }
     tracker.interval = interval;
@@ -2391,6 +2524,7 @@ app.patch('/api/trackers/:id', authMiddleware, (req, res) => {
 app.post('/api/trackers/:id/check', authMiddleware, async (req, res) => {
   const tracker = trackers.find(t => t.id === req.params.id && t.userId === req.userId);
   if (!tracker) return res.status(404).json({ error: 'Not found' });
+  if (req.role !== 'admin') return res.status(403).json({ error: 'Manual checks are not available for your account.' });
   const updated = await checkTracker(tracker);
   const { lastBody, ...safe } = updated;
   res.json(safe);
@@ -2495,8 +2629,9 @@ app.listen(PORT, () => {
   const maintenanceMode   = getSetting('maintenanceMode',   '0') === '1';
   const aiEnabled         = getSetting('aiEnabled',         '1') !== '0';
   const defaultLimit      = parseInt(getSetting('defaultTrackerLimit', '0') || '0');
-  const retentionCap      = Math.max(parseInt(getSetting('historyRetentionCap', '500') || '500'), 10);
-  const userIntervals     = getUserAllowedIntervals();
+
+  const planCount       = db.prepare('SELECT COUNT(*) as c FROM plans').get().c;
+  const defaultPlanRow  = db.prepare('SELECT label FROM plans WHERE isDefault = 1').get();
 
   const aiApiConfigured = !!process.env.ANTHROPIC_API_KEY;
   const sesConfigured   = _isSesConfigured();
@@ -2512,8 +2647,8 @@ app.listen(PORT, () => {
   startupLine('Database', DB_PATH);
   startupLine('Trackers', `${trackers.length} total, ${activeCount} active, ${changedCount} changed`);
   startupLine('Users', `${userCount} total, ${activeUsers} active`);
-  startupLine('Settings', `registration ${yn(allowRegistration, 'open', 'closed')}, maintenance ${yn(maintenanceMode, 'on', 'off')}, AI summaries ${yn(aiEnabled, 'on', 'off')}`);
-  startupLine('Limits', `default tracker limit ${defaultLimit > 0 ? defaultLimit : 'none'}, history cap ${retentionCap}, user intervals ${userIntervals.length}`);
+  startupLine('Plans', `${planCount} plan(s), default: "${defaultPlanRow?.label || 'Default'}"`);
+  startupLine('Settings', `registration ${yn(allowRegistration, 'open', 'closed')}, maintenance ${yn(maintenanceMode, 'on', 'off')}, AI summaries ${yn(aiEnabled, 'on', 'off')}${defaultLimit > 0 ? `, tracker limit ${defaultLimit}` : ''}`);
   startupLine('CORS', CORS_ALLOWLIST.length > 0 ? CORS_ALLOWLIST.join(', ') : 'same-origin only');
   startupLine('Integrations', `AI API ${yn(aiApiConfigured, 'configured', 'missing key')}, SES ${yn(sesConfigured, 'configured', 'not configured')}, S3 favicon cache ${yn(s3Configured, 'configured', 'not configured')}`);
   startupLine('Runtime', `NODE_ENV ${process.env.NODE_ENV || 'development'}, CHECK_CONCURRENCY ${CHECK_CONCURRENCY}`);
@@ -2525,5 +2660,12 @@ app.listen(PORT, () => {
   startupLine('Legend', `${_c.dim}↻ check start | ⚡ changed (includes AI used/skipped + reason) | · no changes found | ~ soft/no-significant change | ✓ baseline/success | ✗ error | ✉ email | ⇄ SSE | ⏱ scheduler${_c.r}`);
   console.log('');
 
+  // Schedule all active trackers at startup — suppress per-tracker log lines to
+  // avoid a wall of output when many trackers exist; instead log a single summary.
+  _suppressSchedulerLog = true;
   trackers.forEach(t => { if (t.active) startTrackerTimer(t); });
+  _suppressSchedulerLog = false;
+  if (activeCount > 0) {
+    log('⏱', _c.blue, `${activeCount} tracker${activeCount === 1 ? '' : 's'} scheduled`);
+  }
 });

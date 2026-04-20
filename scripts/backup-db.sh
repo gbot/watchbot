@@ -5,7 +5,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DB_PATH="$SCRIPT_DIR/../data/watchbot.db"
+DB_PATH="$SCRIPT_DIR/../data/app.db"
 BACKUP_DIR="$SCRIPT_DIR/../data/backups"
 
 if [ ! -f "$DB_PATH" ]; then
@@ -16,7 +16,7 @@ fi
 mkdir -p "$BACKUP_DIR"
 
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-BACKUP_FILE="$BACKUP_DIR/watchbot_$TIMESTAMP.db"
+BACKUP_FILE="$BACKUP_DIR/app_$TIMESTAMP.db"
 
 cp "$DB_PATH" "$BACKUP_FILE"
 

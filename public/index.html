@@ -330,6 +330,7 @@
     </div>
     <div class="admin-tabs">
       <button class="admin-tab active" data-tab="users"    onclick="switchAdminTab('users')">Users</button>
+      <button class="admin-tab"        data-tab="plans"    onclick="switchAdminTab('plans')">User Plans</button>
       <button class="admin-tab"        data-tab="trackers" onclick="switchAdminTab('trackers')">WatchBots</button>
       <button class="admin-tab"        data-tab="settings" onclick="switchAdminTab('settings')">Settings</button>
       <button class="admin-tab"        data-tab="site"     onclick="switchAdminTab('site')">Site</button>
@@ -339,6 +340,8 @@
       <div id="adminSettingsTab" style="display:none"></div>
       <!-- Site tab -->
       <div id="adminSiteTab" style="display:none"></div>
+      <!-- Plans tab -->
+      <div id="adminPlansTab" style="display:none"></div>
       <!-- Users tab -->
       <div id="adminUsersTab">
         <!-- Add user form -->
@@ -383,6 +386,13 @@
               <option value="admin">Admin</option>
             </select>
           </div>
+          <div class="field" style="min-width:130px;gap:4px">
+            <label style="font-size:11px;font-weight:600;color:var(--on-surface-medium);text-transform:uppercase;letter-spacing:0.5px">Plan</label>
+            <select id="adminNewPlan"
+              style="padding:7px 10px;border:1px solid var(--divider);border-radius:8px;font-size:13px;background:var(--surface);color:var(--on-surface)">
+              <option value="">Default</option>
+            </select>
+          </div>
           <button class="btn btn-primary" style="height:36px;white-space:nowrap" onclick="adminAddUser()">
             <span class="material-icons" style="font-size:16px">person_add</span> Add user
           </button>
@@ -413,7 +423,7 @@
               <th>Email</th>
               <th>Role</th>
               <th>Bots</th>
-              <th>Limit</th>
+              <th>Plan</th>
               <th>Status</th>
               <th>Joined</th>
               <th></th>
@@ -528,12 +538,11 @@
     </div>
 
     <div class="profile-section">
-      <div class="profile-section-title">WatchBot limit</div>
-      <div style="display:flex;align-items:center;gap:10px">
-        <input type="number" id="editUserLimit" min="0" placeholder="Unlimited"
-          style="width:120px;padding:9px 12px;border:1px solid var(--divider);border-radius:10px;font-size:14px;background:var(--surface);color:var(--on-surface)" />
-        <span style="font-size:13px;color:var(--on-surface-medium)">Leave blank for no limit</span>
-      </div>
+      <div class="profile-section-title">Plan</div>
+      <select id="editUserPlan"
+        style="padding:9px 12px;border:1px solid var(--divider);border-radius:10px;font-size:14px;background:var(--surface);color:var(--on-surface)">
+        <option value="">Default</option>
+      </select>
     </div>
 
     <p class="profile-msg" id="editUserMsg" style="margin:0"></p>
@@ -542,6 +551,65 @@
       <button class="btn" onclick="closeEditUser()">Cancel</button>
       <button class="btn btn-primary" onclick="saveEditUser()">
         <span class="material-icons" style="font-size:16px">save</span> Save changes
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT PLAN MODAL -->
+<div class="profile-overlay" id="editPlanOverlay" aria-hidden="true">
+  <div class="profile-dialog" role="dialog" aria-modal="true" aria-labelledby="editPlanTitle" style="width:min(560px,100%)">
+    <div class="profile-dialog-header">
+      <h3 id="editPlanTitle" style="font-size:18px;font-weight:500;letter-spacing:-0.1px">Edit Plan</h3>
+      <button class="btn-icon" onclick="closeEditPlan()" aria-label="Close">
+        <span class="material-icons" style="font-size:20px">close</span>
+      </button>
+    </div>
+
+    <div class="profile-section">
+      <div class="profile-section-title">Plan name</div>
+      <input type="text" id="editPlanLabel" placeholder="e.g. Free, Pro, Enterprise" autocomplete="off"
+        style="padding:9px 12px;border:1px solid var(--divider);border-radius:10px;font-size:14px;background:var(--surface);color:var(--on-surface)" />
+    </div>
+
+    <div class="profile-section">
+      <div class="profile-section-title">WatchBot limit</div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <input type="number" id="editPlanTrackerLimit" min="0" placeholder="0"
+          style="width:100px;padding:9px 12px;border:1px solid var(--divider);border-radius:10px;font-size:14px;background:var(--surface);color:var(--on-surface)" />
+        <span style="font-size:13px;color:var(--on-surface-medium)">0 = unlimited</span>
+      </div>
+    </div>
+
+    <div class="profile-section">
+      <div class="profile-section-title">Updates retention</div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <input type="number" id="editPlanRetentionCap" min="10" step="10" placeholder="500"
+          style="width:100px;padding:9px 12px;border:1px solid var(--divider);border-radius:10px;font-size:14px;background:var(--surface);color:var(--on-surface)" />
+        <span style="font-size:13px;color:var(--on-surface-medium)">Max update entries stored (min 10). Flagged entries are never pruned.</span>
+      </div>
+    </div>
+
+    <div class="profile-section">
+      <div class="profile-section-title">Profiles limit</div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <input type="number" id="editPlanProfileLimit" min="1" step="1" placeholder="10"
+          style="width:100px;padding:9px 12px;border:1px solid var(--divider);border-radius:10px;font-size:14px;background:var(--surface);color:var(--on-surface)" />
+        <span style="font-size:13px;color:var(--on-surface-medium)">Max profiles per account (min 1). Admins are always unlimited.</span>
+      </div>
+    </div>
+
+    <div class="profile-section">
+      <div class="profile-section-title">Available check intervals</div>
+      <div id="editPlanIntervals" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px"></div>
+    </div>
+
+    <p class="profile-msg" id="editPlanMsg" style="margin:0"></p>
+
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn" onclick="closeEditPlan()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveEditPlan()">
+        <span class="material-icons" style="font-size:16px">save</span> Save plan
       </button>
     </div>
   </div>
