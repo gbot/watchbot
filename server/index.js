@@ -105,9 +105,12 @@ function passwordPolicyError(password, fieldLabel = 'Password') {
 
 // ─── CLAUDE MODEL RESOLVER ────────────────────────────────────────────────────
 const _modelAliases = {
+  'sonnet-4.6': 'claude-sonnet-4-6',
+  'sonnet4.6':  'claude-sonnet-4-6',
+  'sonnet-4-6': 'claude-sonnet-4-6',
   'sonnet-4':   'claude-sonnet-4-20250514',
   'sonnet4':    'claude-sonnet-4-20250514',
-  'sonnet':     'claude-sonnet-4-20250514',
+  'sonnet':     'claude-sonnet-4-6',
   'sonnet-3.5': 'claude-3-5-sonnet-20241022',
   'sonnet3.5':  'claude-3-5-sonnet-20241022',
   'sonnet-3':   'claude-3-5-sonnet-20241022',
@@ -120,7 +123,7 @@ const _modelAliases = {
   'haiku3.5':   'claude-3-5-haiku-20241022',
 };
 const CLAUDE_MODEL = (() => {
-  const rawInput = process.env.CLAUDE_MODEL || 'sonnet-4';
+  const rawInput = process.env.CLAUDE_MODEL || 'sonnet-4.6';
   const raw = rawInput.trim().toLowerCase();
   return _modelAliases[raw] || rawInput.trim();
 })();
@@ -129,7 +132,7 @@ log('✦', _c.magenta, `Claude model: ${CLAUDE_MODEL}`);
 // ─── PERSISTENCE (SQLite) ─────────────────────────────────────────────────────
 const Database = require('better-sqlite3');
 const DATA_DIR  = path.join(__dirname, '../data');
-const DB_PATH   = path.join(DATA_DIR, 'watchbot.db');
+const DB_PATH   = path.join(DATA_DIR, 'app.db');
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
