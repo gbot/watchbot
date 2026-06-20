@@ -151,7 +151,7 @@ function pick(arr) {
 
 // ─── MAIN ─────────────────────────────────────────────────────────────────────
 function main() {
-  const DB_PATH = path.join(__dirname, '../data/watchbot.db');
+  const DB_PATH = path.join(__dirname, '../data/app.db');
   // Ensure the data directory exists before opening the database
   fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 

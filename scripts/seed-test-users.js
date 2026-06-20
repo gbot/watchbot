@@ -22,7 +22,7 @@ const bcrypt  = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 const Database = require('better-sqlite3');
 
-const DB_PATH = path.join(__dirname, '../data/watchbot.db');
+const DB_PATH = path.join(__dirname, '../data/app.db');
 // Ensure the data directory exists before opening the database
 fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 
